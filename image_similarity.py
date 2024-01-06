@@ -74,6 +74,7 @@ class ImageSimilarity:
         def compute_thumbnail(path):
             if self._is_image(path):
                 with Image.open(image_path) as img:
+                    img.load()
                     img.thumbnail((1280, 720))
                     return img
 

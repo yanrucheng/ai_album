@@ -43,9 +43,11 @@ class CacheManager:
     
 
     def load(self, path):
-        def save(data, path):
+        def _save(data, path):
+            print('12423dsf', path)
             if isinstance(data, Image.Image):
                 data.save(path, quality=IMG_QUALITY)
+                data.close()
             elif isinstance(data, str):
                 with open(path, 'w', encoding='utf-8') as file:
                     file.write(data)
@@ -56,9 +58,11 @@ class CacheManager:
                 with open(path, 'wb') as file:
                     pickle.dump(data, file)
         
-        def load_individual_file(path):
+        def _load_individual_file(path):
             if path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff')):
-                return Image.open(path)
+                with Image.open(path) as img:
+                    img.load()
+                    return img
             elif path.lower().endswith('.txt'):
                 with open(path, 'r', encoding='utf-8') as file:
                     return file.read()
@@ -81,18 +85,18 @@ class CacheManager:
                 for item in self.generate_func(path):
                     i += 1
                     item_path = cache_file_path.replace('*', str(i))
-                    save(item, item_path)
+                    _save(item, item_path)
                     
             matched_files = glob.glob(cache_file_path)
-            return [load_individual_file(file_path) for file_path in sorted(matched_files)]
+            return [_load_individual_file(file_path) for file_path in sorted(matched_files)]
         else:
             if not os.path.exists(cache_file_path):
                 data = self.generate_func(path)
                 os.makedirs(os.path.dirname(cache_file_path), exist_ok=True)
-                save(data, cache_file_path)
+                _save(data, cache_file_path)
 
             if os.path.exists(cache_file_path):
-                return load_individual_file(cache_file_path)
+                return _load_individual_file(cache_file_path)
 
         return None
 

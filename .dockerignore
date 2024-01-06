@@ -1,0 +1,14 @@
+data/
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+venv
+.git
+.dockerignore
+.gitignore
+README.md
+LICENSE
+.docker/
