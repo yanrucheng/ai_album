@@ -3,8 +3,11 @@ import pickle
 from PIL import Image
 import utils
 import glob
+import yaml
 
 IMG_QUALITY = 50
+
+
 
 class CacheManager:
 
@@ -46,19 +49,26 @@ class CacheManager:
             elif isinstance(data, str):
                 with open(path, 'w', encoding='utf-8') as file:
                     file.write(data)
+            elif isinstance(data, dict):
+                with open(path, 'w', encoding='utf-8') as file:
+                    yaml.dump(data, file)
             else:
                 with open(path, 'wb') as file:
                     pickle.dump(data, file)
-
+        
         def load_individual_file(path):
             if path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff')):
                 return Image.open(path)
             elif path.lower().endswith('.txt'):
                 with open(path, 'r', encoding='utf-8') as file:
                     return file.read()
+            elif path.lower().endswith('.yaml') or path.lower().endswith('.yml'):
+                with open(path, 'r', encoding='utf-8') as file:
+                    return yaml.safe_load(file)
             else:
                 with open(path, 'rb') as file:
                     return pickle.load(file)
+
 
         cache_file_path = self._get_cache_file_path(path)
 

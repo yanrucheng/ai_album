@@ -1,7 +1,17 @@
-from similarities import ClipSimilarity, SiftSimilarity
 import os
 import shutil
+import shutil
 import hashlib
+from functools import lru_cache
+from datetime import datetime
+
+@lru_cache(maxsize=4096)
+def md5(path):
+    hash_md5 = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
 class MyPath:
 
@@ -24,30 +34,60 @@ class MyPath:
     
     @property
     def md5(self):
-        hash_md5 = hashlib.md5()
-        with open(self.path, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hash_md5.update(chunk)
+        return md5(self.path)
+
+    @property
+    def date(self):
+        try:
+            # Get creation time (on Windows) or the last metadata change (on Unix)
+            creation_time = os.path.getctime(self.path)
     
-        return hash_md5.hexdigest()
+            # Get last modification time
+            modification_time = os.path.getmtime(self.path)
+    
+            # Format times or set to None if they're not available
+            creation_date = datetime.fromtimestamp(creation_time).strftime('%y%m%d') if creation_time else None
+            modification_date = datetime.fromtimestamp(modification_time).strftime('%y%m%d') if modification_time else None
+    
+            # Determine which date to use
+            if creation_date:
+                return creation_date
+            elif modification_date:
+                return modification_date
+            else:
+                return None
+        except OSError as error:
+            print(f"Error getting dates for {self.path}: {error}")
+            return None
 
 
-class SingletonModelLoader:
+class SingletonMeta(type):
     _instances = {}
 
-    def __new__(cls, model_name_or_path):
-        if model_name_or_path not in cls._instances:
-            instance = super(SingletonModelLoader, cls).__new__(cls)
-            instance.model = ClipSimilarity(model_name_or_path=model_name_or_path)
-            cls._instances[model_name_or_path] = instance
-        return cls._instances[model_name_or_path]
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            instance = super().__call__(*args, **kwargs)
+            cls._instances[cls] = instance
+        return cls._instances[cls]
 
-    @classmethod
-    def get_model(cls, model_name_or_path):
-        return cls(model_name_or_path).model
-        
+class Singleton(metaclass=SingletonMeta):
+    def __init__(self):
+        super().__init__()
         
 def copy_file_as_cluster(clusters, target_path):
+
+    def _copy(src, dst):
+        # Copy the file
+        shutil.copy2(src, dst)
+    
+        # Get timestamps from the source file
+        stat_src = os.stat(src)
+        atime = stat_src.st_atime  # Access time
+        mtime = stat_src.st_mtime  # Modification time
+    
+        # Apply timestamps to the destination file
+        os.utime(dst, (atime, mtime))
+    
     def _copy_files_to_clusters(clusters, target_path, _current_path=""):
         for cluster_id, contents in clusters.items():
             # Create a new subdirectory for the current cluster
@@ -56,10 +96,10 @@ def copy_file_as_cluster(clusters, target_path):
     
             if isinstance(contents, dict):
                 # If the contents are a dictionary, recurse into it
-                copy_files_to_clusters(contents, target_path, os.path.join(_current_path, str(cluster_id)))
+                _copy_files_to_clusters(contents, target_path, os.path.join(_current_path, str(cluster_id)))
             elif isinstance(contents, list):
                 # If the contents are a list, copy the files into the current cluster directory
                 for file_path in contents:
-                    shutil.copy(file_path, cluster_dir)
+                    _copy(file_path, cluster_dir)
                     
     _copy_files_to_clusters(clusters=clusters, target_path=target_path)

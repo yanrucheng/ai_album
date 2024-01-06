@@ -5,3 +5,5 @@ salesforce-lavis==1.0.2
 similarities==1.1.6
 tqdm==4.66.1
 jupyter
+pyyaml
+nudenet

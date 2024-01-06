@@ -8,19 +8,20 @@ register_heif_opener()
 from tqdm import tqdm
 from sklearn.cluster import AgglomerativeClustering
 
-from utils import SingletonModelLoader
-
 from cache_manager import CacheManager
 from video_manager import VideoManager
-from image_text_model import ImageQuestionAnswerer
+from myllm import ImageSimilarityCalculator, ImageCaptioner, NudeTagger, VQA, ImageTextMatcher
+from media_questionare import MediaQuestionare
+from utils import MyPath
 
+CAPTION_MIN_LENGTH = 10
+CAPTION_MAX_LENGTH = 30
 
 class ImageSimilarity:
-    def __init__(self, folder_path, model_name='OFA-Sys/chinese-clip-vit-huge-patch14', batch_size=8, show_progress_bar=True, **kwargs):
+    def __init__(self, folder_path, batch_size=8, show_progress_bar=True, **kwargs):
         print("Initializing ImageSimilarity...")
 
-        self.model_name = model_name.replace('/', '_')  # Replace '/' in model name for file paths
-        self.similarity_model = SingletonModelLoader.get_model(model_name)
+        self.similarity_model = ImageSimilarityCalculator()
         self.batch_size = batch_size
         self.show_progress_bar = show_progress_bar
         self.kwargs = kwargs  # Store any additional keyword arguments
@@ -28,7 +29,10 @@ class ImageSimilarity:
         self.folder_path = folder_path
         self.media_fps = self._load_image_paths(folder_path)
         self.video_mng = VideoManager(folder_path)
-        self.qa = ImageQuestionAnswerer("blip_caption", "large_coco")
+        self.cp = ImageCaptioner()
+        self.mq = MediaQuestionare()
+        self.nt = NudeTagger()
+        self.mt = ImageTextMatcher()
 
         # Initialize CacheManagers
         self.thumbnail_cache_manager = CacheManager(target_path=folder_path,
@@ -43,10 +47,13 @@ class ImageSimilarity:
                                                     cache_tag="caption",
                                                     generate_func=self._generate_caption,
                                                     format_str="{base}_{md5}_caption.txt")
+        self.tag_cache_manager       = CacheManager(target_path=folder_path,
+                                                    cache_tag="tag",
+                                                    generate_func=self._generate_tags,
+                                                    format_str="{base}_{md5}_tag.yml")
 
         print("Loaded similarity model and image file paths.")
         self._initialize()
-        self.similarity_cache = self._cache_similarities()
         print("Initialization complete.")
 
     def _load_image_paths(self, folder_path):
@@ -76,15 +83,44 @@ class ImageSimilarity:
             return None
 
         return compute_thumbnail(image_path)
+
+    def _generate_tags(self, image_path):
+
+        # get questionare
+        img = self.thumbnail_cache_manager.load(image_path)
+        d = self.mq.process_image(img)
+
+        # add confidence
+        # d['vertical_angle_confidence'] = self.mt.text_match(img, f"In terms of filming angle, this picture is in a {d['vertival_angle']} view")
+        # d['horizontal_angle_confidence'] = self.mt.text_match(img, f"In terms of filming angle, this picture is in a {d['horizontal_angle']} view")
+        # d['sex_confidence'] = self.mt.text_match(img, d['sex'])
+
+        # add caption
+        d['caption'] = self.caption_cache_manager.load(image_path)
+
+        # add nude tags
+        # bad implementation but no choice because of 3rd party implementation
+        thumb_path = self.thumbnail_cache_manager._get_cache_file_path(image_path)
+        nude_tags = self.nt.detect(thumb_path)
+        d['nude_tag'] = nude_tags
+        return d
         
     def _initialize(self):
         print("Initializing embeddings...")
         for fp in tqdm(self.media_fps, desc="Initializing embeddings"):
             _ = self.embedding_cache_manager.load(fp)
-    
+
+        self._cache_similarities()
+
+    def compute_all_captions(self):
         print("Initializing captions...")
         for fp in tqdm(self.media_fps, desc="Initializing captions"):
             _ = self.caption_cache_manager.load(fp)
+            
+    def compute_all_tags(self):
+        print("Initializing tags...")
+        for fp in tqdm(self.media_fps, desc="Initializing tags"):
+            _ = self.tag_cache_manager.load(fp)
 
     def _generate_embedding(self, image_path):
         img = self.thumbnail_cache_manager.load(image_path)
@@ -93,8 +129,8 @@ class ImageSimilarity:
 
     def _generate_caption(self, image_path):
         img = self.thumbnail_cache_manager.load(image_path)
-        return self.qa.caption(img, max_length=90, min_length=30)[0]
-    
+        return self.cp.caption(img, max_length=CAPTION_MAX_LENGTH, min_length=CAPTION_MIN_LENGTH)[0]
+
     def _cache_similarities(self):
         cache = {}
         batch_size = 100
@@ -111,14 +147,14 @@ class ImageSimilarity:
             # Compute similarity matrix for the batch
             for j in range(len(batch_fps)):
                 for k in range(j + 1, len(batch_fps)):  # Avoid duplicate computations
-                    sim_score = self.similarity_model.score_functions['cos_sim'](embeddings[j], embeddings[k])
+                    sim_score = self.similarity_model.similarity_func(embeddings[j], embeddings[k])
                     cache[(i + j, i + k)] = sim_score
                     cache[(i + k, i + j)] = sim_score
 
             pbar.update(min(batch_size, len(self.media_fps) - i))
 
         pbar.close()
-        return cache
+        self.similarity_cache = cache
         
     def get_similarity_with_file_path(self, file_path_a, file_path_b):
         if file_path_a in self.media_fps and file_path_b in self.media_fps:
@@ -173,9 +209,81 @@ class ImageSimilarity:
             return new_clusters
 
         # Apply recursive clustering starting from level 0
-        final_clusters = recursive_clustering(initial_cluster, 0)
-        return final_clusters
+        result_clusters = recursive_clustering(initial_cluster, 0)[0]
+        named_clusters = self._cluster_naming(result_clusters)
+        marked_clusters = self._cluster_marking(named_clusters)
+        
+        return marked_clusters
+
+    def _cluster_marking(self, nested_dict):
+        def generate_prefix(file_paths):
+            lbls = set(tag_d['msg'] for f in file_paths for tag_d in self.tag_cache_manager.load(f)['nude_tag'].values() if tag_d['sensitive'])
+            if len(lbls) <= 0:
+                return ''
+            elif len(lbls) <= 3:
+                return f"[{'-'.join(sorted(lbls))}]"
+            else:
+                return 'ITMC-'
             
+        def recurse(d):
+            if isinstance(d, dict):
+                new_dict = {}
+                res = set()
+                for key, value in d.items():
+                    d_, res_ = recurse(value)
+                    prefix = generate_prefix(res_)
+                    new_key = prefix + key
+                    res = res.union(res_)
+                    new_dict[new_key] = d_
+                return new_dict, res
+            else:
+                # For leaf nodes (list of file paths), just return them
+                return d, set(d)
+    
+        d, _ = recurse(nested_dict)
+        return d
+
+    def _cluster_naming(self, clusters):
+        def generate_folder_name(image_path):
+            caption = self.caption_cache_manager.load(image_path)
+            folder_name = '-'.join(x.title() for x in caption.split())
+            p = MyPath(image_path)
+            return f'{p.date}-{folder_name}'
+        
+        def calculate_similarity(item1, item2):
+            emb1 = self.embedding_cache_manager.load(item1)
+            emb2 = self.embedding_cache_manager.load(item2)
+            return self.similarity_model.similarity_func(emb1, emb2)
+
+        def average_similarity(item, items):
+            total_similarity = sum(calculate_similarity(item, other) for other in items if other != item)
+            return total_similarity / (len(items) - 1) if len(items) > 1 else 0
+            
+        def select_best_representation(items):
+            return max(items, key=lambda item: average_similarity(item, items))
+
+        def process_dict_for_similarity(d):
+            if isinstance(d, dict):
+                new_dict = {}
+                representations = list(d.keys()) + [img for sublist in d.values() if isinstance(sublist, list) for img in sublist]
+                for _, value in d.items():
+                    processed_value, best = process_dict_for_similarity(value)
+                    new_dict[best] = processed_value
+                    
+                return new_dict, select_best_representation([*new_dict.keys()])
+            elif isinstance(d, list):
+                return d[:], select_best_representation(d)
+            else:
+                return None, None
+        
+        def rename_to_captions(d):
+            if isinstance(d, dict):
+                return {generate_folder_name(key): rename_to_captions(value) for key, value in d.items()}
+            return d
+        
+        processed_for_similarity, _ = process_dict_for_similarity(clusters)
+        return rename_to_captions(processed_for_similarity)
+
 
     def cluster_images_with_hierarchical(self, embeddings, distance_threshold=0.05):
         '''The best. distance_threshold = 0.5 for detailed cluster. distance_threshold = 2 for coarse cluster'''

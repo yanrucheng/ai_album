@@ -2,8 +2,8 @@ import os
 import cv2
 from PIL import Image
 
-from utils import SingletonModelLoader
 from cache_manager import CacheManager
+from myllm import ImageSimilarityCalculator
 
 INTERVAL = 3
 TOP_K_KEY_FRAME_SELECTION = 0.5
@@ -14,10 +14,10 @@ def format_filename(file_path):
     return (file_name[:27] + '...') if len(file_name) > 30 else file_name
 
 class VideoManager:
-    def __init__(self, folder_path, model_name='OFA-Sys/chinese-clip-vit-huge-patch14'):
+    def __init__(self, folder_path, model_name=''):
         self.folder_path = folder_path
         self.model_name = model_name.replace('/', '_')
-        self.similarity_model = SingletonModelLoader.get_model(model_name)
+        self.similarity_model = ImageSimilarityCalculator()
         self.frame_cache_manager = CacheManager(target_path=folder_path,
                                                 cache_tag="frames",
                                                 generate_func=self._extract_and_cache_frames,
@@ -44,7 +44,7 @@ class VideoManager:
         key_frame = pil_frames[0] # use the first one as the default result
     
         for i, emb_a in enumerate(embeddings):
-            similarities = [self.similarity_model.score_functions['cos_sim'](emb_a, emb_b) for j, emb_b in enumerate(embeddings) if i != j]
+            similarities = [self.similarity_model.similarity_func(emb_a, emb_b) for j, emb_b in enumerate(embeddings) if i != j]
             top_k_similarities = sorted(similarities, reverse=True)[:top_k]
             if top_k_similarities:
                 avg_similarity = sum(top_k_similarities) / len(top_k_similarities)
