@@ -9,8 +9,8 @@ from tqdm import tqdm
 from sklearn.cluster import AgglomerativeClustering
 
 from utils import SingletonModelLoader
-from cache_manager import CacheManager
 
+from cache_manager import CacheManager
 from video_manager import VideoManager
 from image_text_model import ImageQuestionAnswerer
 
@@ -31,21 +31,18 @@ class ImageSimilarity:
         self.qa = ImageQuestionAnswerer("blip_caption", "large_coco")
 
         # Initialize CacheManagers
-        self.thumbnail_cache_manager = CacheManager(cache_path_prefix=".similarity_cache/img/",
-                                                    root_path=folder_path,
+        self.thumbnail_cache_manager = CacheManager(target_path=folder_path,
                                                     cache_tag="thumbnail",
                                                     generate_func=self._compute_and_save_thumbnail,
-                                                    format_str="{base}_thumbnail.jpg")
-        self.embedding_cache_manager = CacheManager(cache_path_prefix=".similarity_cache/img/",
-                                                    root_path=folder_path,
+                                                    format_str="{base}_thumbnail_{md5}.jpg")
+        self.embedding_cache_manager = CacheManager(target_path=folder_path,
                                                     cache_tag="emb",
                                                     generate_func=self._generate_embedding,
-                                                    format_str="{base}.emb")
-        self.caption_cache_manager = CacheManager(cache_path_prefix=".similarity_cache/img/",
-                                                    root_path=folder_path,
+                                                    format_str="{base}_{md5}.emb")
+        self.caption_cache_manager   = CacheManager(target_path=folder_path,
                                                     cache_tag="caption",
                                                     generate_func=self._generate_caption,
-                                                    format_str="{base}_caption.txt")
+                                                    format_str="{base}_{md5}_caption.txt")
 
         print("Loaded similarity model and image file paths.")
         self._initialize()

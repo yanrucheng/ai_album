@@ -5,7 +5,8 @@ from PIL import Image
 from utils import SingletonModelLoader
 from cache_manager import CacheManager
 
-INTERVAL = 10
+INTERVAL = 3
+TOP_K_KEY_FRAME_SELECTION = 0.5
 
 def format_filename(file_path):
     """Truncate and format the file name to a maximum of 30 characters."""
@@ -17,40 +18,45 @@ class VideoManager:
         self.folder_path = folder_path
         self.model_name = model_name.replace('/', '_')
         self.similarity_model = SingletonModelLoader.get_model(model_name)
-        self.frame_cache_manager = CacheManager(cache_path_prefix=".similarity_cache/video/",
-                                                root_path=folder_path,
+        self.frame_cache_manager = CacheManager(target_path=folder_path,
                                                 cache_tag="frames",
                                                 generate_func=self._extract_and_cache_frames,
-                                                format_str='{base}/thumbnail_{cache_tag}_*.jpg')
-        self.emb_cache_manager = CacheManager(cache_path_prefix=".similarity_cache/video/",
-                                              root_path=folder_path,
-                                              cache_tag="emb",
-                                              generate_func=self._generate_embeddings,
-                                              format_str='{base}/sim_{cache_tag}_*.emb')
+                                                format_str='{base}_{md5}/{base}_thumbnail_*.jpg')
+        self.emb_cache_manager   = CacheManager(target_path=folder_path,
+                                                cache_tag="emb",
+                                                generate_func=self._generate_embeddings,
+                                                format_str='{base}_{md5}/{base}_*.emb')
 
-    def extract_key_frame(self, path):
+    def extract_key_frame(self, path, top_k=TOP_K_KEY_FRAME_SELECTION):
+
+        assert isinstance(top_k, int) or isinstance(top_k, float), 'top_k should be int or float'
+        
         file_name = format_filename(path)
         print(f"Extracting frames from video '{file_name}'...")
-
+    
         embeddings = self.emb_cache_manager.load(path)
-
-        max_avg_similarity = 0
-        key_frame = None
         pil_frames = self.frame_cache_manager.load(path)
-
+        
+        if isinstance(top_k, float):
+            top_k = max(int(round(len(pil_frames) * top_k)), 2) # at least 3 samples should be considered
+    
+        max_avg_similarity = 0
+        key_frame = pil_frames[0] # use the first one as the default result
+    
         for i, emb_a in enumerate(embeddings):
-            total_similarity = 0
-            for j, emb_b in enumerate(embeddings):
-                if i != j:
-                    similarity = self.similarity_model.score_functions['cos_sim'](emb_a, emb_b)
-                    total_similarity += similarity
-
-            avg_similarity = total_similarity / (len(embeddings) - 1)
+            similarities = [self.similarity_model.score_functions['cos_sim'](emb_a, emb_b) for j, emb_b in enumerate(embeddings) if i != j]
+            top_k_similarities = sorted(similarities, reverse=True)[:top_k]
+            if top_k_similarities:
+                avg_similarity = sum(top_k_similarities) / len(top_k_similarities)
+            else:
+                avg_similarity = 0
+                
             if avg_similarity > max_avg_similarity:
                 max_avg_similarity = avg_similarity
                 key_frame = pil_frames[i]
-
+    
         return key_frame
+
 
     def extract_frames(self, video_path):
         return self.frame_cache_manager.load(video_path)

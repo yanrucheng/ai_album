@@ -1,34 +1,48 @@
 import os
 import pickle
 from PIL import Image
+import utils
+import glob
 
+IMG_QUALITY = 50
 
 class CacheManager:
 
-    ROOT_BASE = '~/.cache/ai_album/'
-    
-    def __init__(self, cache_path_prefix, root_path, cache_tag, generate_func, format_str="{base}_{cache_tag}.cache"):
-        self.cache_path_prefix = cache_path_prefix
-        self.root_path = os.path.abspath(root_path)
+    CACHE_BASE = '.similarity_cache/'
+
+    def __init__(self,
+                 generate_func,
+                 cache_tag='cache',
+                 target_path='',
+                 cache_root_path='',
+                 cache_folder_name='',
+                 format_str="{base}_{ext}_{cache_tag}_{md5}.jpg"):
+
+        assert target_path or (cache_root_path and cache_folder_name), \
+            'Either target path or (cache root path and cache folder name) should be provided'
+
         self.cache_tag = cache_tag
         self.generate_func = generate_func
         self.format_str = format_str
 
+        if target_path:
+            cache_root_path, cache_folder_name = os.path.split(target_path.rstrip('/').rstrip('\\'))
+
+        self.cache_folder_name = cache_folder_name
+        self.cache_folder = os.path.abspath(os.path.join(cache_root_path, self.CACHE_BASE, cache_folder_name))
+
     def _get_cache_file_path(self, path):
-
-        root_p, root_folder_name = os.path.split(self.root_path.rstrip('/'))
-        cache_path = os.path.abspath(path).replace(root_p, self.ROOT_BASE + self.cache_path_prefix)
-
-        base, ext = os.path.splitext(cache_path)
-        ext = ext[1:]
-        p = self.format_str.format(base=base, ext=ext, cache_tag=self.cache_tag)
+        p = utils.MyPath(path)
+        basename = self.format_str.format(base=p.basename, ext=p.extension, cache_tag=self.cache_tag, md5=p.md5)
+        cache_p = utils.MyPath(os.path.join(self.cache_folder, basename))
         
-        return os.path.expanduser(p).lower()
+        return cache_p.abspath
+    
 
     def load(self, path):
         def save(data, path):
             if isinstance(data, Image.Image):
-                data.save(path, quality=50)
+                data.save(path, quality=IMG_QUALITY)
             elif isinstance(data, str):
                 with open(path, 'w', encoding='utf-8') as file:
                     file.write(data)
