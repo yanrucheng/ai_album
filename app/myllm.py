@@ -1,4 +1,5 @@
-from similarities import ClipSimilarity, utils
+# from similarities import utils
+# from similarities import ClipSimilarity
 from utils import Singleton
 from PIL import Image
 from lavis.models import load_model_and_preprocess
@@ -13,6 +14,7 @@ class ImageSimilarityCalculator(Singleton):
     def _load(self):
         model_name = 'OFA-Sys/chinese-clip-vit-huge-patch14'
         print('Loading ', model_name)
+        from similarities import ClipSimilarity
         self.model = ClipSimilarity(model_name_or_path=model_name)
 
     def get_embeddings(self, imgs, **kw):
@@ -20,6 +22,7 @@ class ImageSimilarityCalculator(Singleton):
         return self.model.get_embeddings(imgs, **kw)
 
     def similarity_func(self, *args, **kw):
+        from similarities import utils
         return utils.util.cos_sim(*args, **kw)
 
 

@@ -18,7 +18,12 @@ CAPTION_MIN_LENGTH = 10
 CAPTION_MAX_LENGTH = 30
 
 class ImageSimilarity:
-    def __init__(self, folder_path, batch_size=8, show_progress_bar=True, **kwargs):
+    def __init__(self,
+                 folder_path,
+                 questionare_on=False,
+                 batch_size=8,
+                 show_progress_bar=True,
+                 **kwargs):
         print("Initializing ImageSimilarity...")
 
         self.similarity_model = ImageSimilarityCalculator()
@@ -26,13 +31,16 @@ class ImageSimilarity:
         self.show_progress_bar = show_progress_bar
         self.kwargs = kwargs  # Store any additional keyword arguments
 
+        self.questionare_on = questionare_on
         self.folder_path = folder_path
         self.media_fps = self._load_image_paths(folder_path)
         self.video_mng = VideoManager(folder_path)
         self.cp = ImageCaptioner()
+        
         self.mq = MediaQuestionare()
-        self.nt = NudeTagger()
         self.mt = ImageTextMatcher()
+        
+        self.nt = NudeTagger()
 
         # Initialize CacheManagers
         self.thumbnail_cache_manager = CacheManager(target_path=folder_path,
@@ -87,15 +95,18 @@ class ImageSimilarity:
 
     def _generate_tags(self, image_path):
 
-        # get questionare
-        img = self.thumbnail_cache_manager.load(image_path)
-        d = self.mq.process_image(img)
+        d = {}
 
-        # add confidence
-        # d['vertical_angle_confidence'] = self.mt.text_match(img, f"In terms of filming angle, this picture is in a {d['vertival_angle']} view")
-        # d['horizontal_angle_confidence'] = self.mt.text_match(img, f"In terms of filming angle, this picture is in a {d['horizontal_angle']} view")
-        # d['sex_confidence'] = self.mt.text_match(img, d['sex'])
+        if self.questionare_on:
+            # get questionare
+            img = self.thumbnail_cache_manager.load(image_path)
+            d = self.mq.process_image(img)
 
+            # add confidence
+            # d['vertical_angle_confidence'] = self.mt.text_match(img, f"In terms of filming angle, this picture is in a {d['vertival_angle']} view")
+            # d['horizontal_angle_confidence'] = self.mt.text_match(img, f"In terms of filming angle, this picture is in a {d['horizontal_angle']} view")
+            # d['sex_confidence'] = self.mt.text_match(img, d['sex'])
+    
         # add caption
         d['caption'] = self.caption_cache_manager.load(image_path)
 

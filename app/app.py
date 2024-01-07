@@ -9,6 +9,7 @@ def parse_arguments():
     # Add arguments
     parser.add_argument('folder_path', type=str, help='Path to the folder containing images')
     parser.add_argument('--batch_size', type=int, default=16, help='Batch size for processing images (default: 16)')
+    parser.add_argument('--questionare_on', type=bool, default=False, help='Turn on calculation for image questionare. This adds 8G additional memory (default: False)')
     parser.add_argument('--show_progress', action='store_true', help='Show progress bar during processing')
     parser.add_argument('--distance_levels', nargs='*', type=float, default=[2, 0.5], help='List of distance levels for hierarchical clustering (default: [2, 0.5])')
     parser.add_argument('--output_path', type=str, default='', help='Output path to copy files as clusters (default: ./data/testoutput/)')
@@ -21,6 +22,7 @@ def main():
     # Usage
     s = ImageSimilarity(args.folder_path,
                         batch_size=args.batch_size,
+                        questionare_on=args.questionare_on,
                         show_progress_bar=args.show_progress)
 
     # Compute all captions
