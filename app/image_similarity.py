@@ -36,10 +36,10 @@ class ImageSimilarity:
         self.media_fps = self._load_image_paths(folder_path)
         self.video_mng = VideoManager(folder_path)
         self.cp = ImageCaptioner()
-        
+
         self.mq = MediaQuestionare()
         self.mt = ImageTextMatcher()
-        
+
         self.nt = NudeTagger()
 
         # Initialize CacheManagers
@@ -73,7 +73,7 @@ class ImageSimilarity:
     def _is_image(self, path):
         file_extensions = ['*.jpg', '*.jpeg', '*.png', '*.heic', '*.heif']
         return any(fnmatch.fnmatch(path.lower(), ext) for ext in file_extensions)
-        
+
     def _is_video(self, path):
         file_extensions = ['*.mp4', '*.avi', '*.webm', '*.mkv', '*.mov']
         return any(fnmatch.fnmatch(path.lower(), ext) for ext in file_extensions)
@@ -106,7 +106,7 @@ class ImageSimilarity:
             # d['vertical_angle_confidence'] = self.mt.text_match(img, f"In terms of filming angle, this picture is in a {d['vertival_angle']} view")
             # d['horizontal_angle_confidence'] = self.mt.text_match(img, f"In terms of filming angle, this picture is in a {d['horizontal_angle']} view")
             # d['sex_confidence'] = self.mt.text_match(img, d['sex'])
-    
+
         # add caption
         d['caption'] = self.caption_cache_manager.load(image_path)
 
@@ -116,7 +116,7 @@ class ImageSimilarity:
         nude_tags = self.nt.detect(thumb_path)
         d['nude_tag'] = nude_tags
         return d
-        
+
     def _initialize(self):
         print("Initializing embeddings...")
         for fp in tqdm(self.media_fps, desc="Initializing embeddings"):
@@ -128,7 +128,7 @@ class ImageSimilarity:
         print("Initializing captions...")
         for fp in tqdm(self.media_fps, desc="Initializing captions"):
             _ = self.caption_cache_manager.load(fp)
-            
+
     def compute_all_tags(self):
         print("Initializing tags...")
         for fp in tqdm(self.media_fps, desc="Initializing tags"):
@@ -167,7 +167,7 @@ class ImageSimilarity:
 
         pbar.close()
         self.similarity_cache = cache
-        
+
     def get_similarity_with_file_path(self, file_path_a, file_path_b):
         if file_path_a in self.media_fps and file_path_b in self.media_fps:
             idx_a = self.media_fps.index(file_path_a)
@@ -184,10 +184,13 @@ class ImageSimilarity:
         :param distance_levels: A list of distance thresholds for each level of clustering.
         :return: Nested dictionary representing multi-level hierarchical clusters.
         """
+        if len(self.media_fps) <= 0:
+            return {}
+
         embeddings = [self.embedding_cache_manager.load(fp) for fp in self.media_fps]
-        
+
         if distance_levels is None:
-            distance_levels = [0.05]  # Default value
+            distance_levels = [2, 0.5]  # Default value
 
         # Pair each embedding with its corresponding file path
         paired_data = list(zip(self.media_fps, embeddings))
@@ -221,10 +224,14 @@ class ImageSimilarity:
             return new_clusters
 
         # Apply recursive clustering starting from level 0
-        result_clusters = recursive_clustering(initial_cluster, 0)[0]
+        if len(self.media_fps) >= 2:
+            result_clusters = recursive_clustering(initial_cluster, 0)[0]
+        else:
+            result_clusters = {0: self.media_fps}
+
         named_clusters = self._cluster_naming(result_clusters)
         marked_clusters = self._cluster_marking(named_clusters)
-        
+
         return marked_clusters
 
     def _cluster_marking(self, nested_dict):
@@ -236,7 +243,7 @@ class ImageSimilarity:
                 return f"[{'-'.join(sorted(lbls))}]"
             else:
                 return 'ITMC-'
-            
+
         def recurse(d):
             if isinstance(d, dict):
                 new_dict = {}
@@ -251,7 +258,7 @@ class ImageSimilarity:
             else:
                 # For leaf nodes (list of file paths), just return them
                 return d, set(d)
-    
+
         d, _ = recurse(nested_dict)
         return d
 
@@ -261,7 +268,7 @@ class ImageSimilarity:
             folder_name = '-'.join(x.title() for x in caption.split())
             p = MyPath(image_path)
             return f'{p.date}-{folder_name}'
-        
+
         def calculate_similarity(item1, item2):
             emb1 = self.embedding_cache_manager.load(item1)
             emb2 = self.embedding_cache_manager.load(item2)
@@ -270,7 +277,7 @@ class ImageSimilarity:
         def average_similarity(item, items):
             total_similarity = sum(calculate_similarity(item, other) for other in items if other != item)
             return total_similarity / (len(items) - 1) if len(items) > 1 else 0
-            
+
         def select_best_representation(items):
             return max(items, key=lambda item: average_similarity(item, items))
 
@@ -281,18 +288,18 @@ class ImageSimilarity:
                 for _, value in d.items():
                     processed_value, best = process_dict_for_similarity(value)
                     new_dict[best] = processed_value
-                    
+
                 return new_dict, select_best_representation([*new_dict.keys()])
             elif isinstance(d, list):
                 return d[:], select_best_representation(d)
             else:
                 return None, None
-        
+
         def rename_to_captions(d):
             if isinstance(d, dict):
                 return {generate_folder_name(key): rename_to_captions(value) for key, value in d.items()}
             return d
-        
+
         processed_for_similarity, _ = process_dict_for_similarity(clusters)
         return rename_to_captions(processed_for_similarity)
 
