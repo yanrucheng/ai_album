@@ -11,14 +11,15 @@ COPY ./app/requirements-lock.txt .
 # Install any needed packages specified in requirements-lock.txt
 RUN pip install --no-cache-dir -r requirements-lock.txt
 
-# Copy the rest of the current directory contents into the container
-COPY ./app .
-
 # Run download_resource.py during the image build
 # Check if model_dev_cache exists and move it to /root/.cache if it does
 COPY ./model_cache /root/.cache
 # this will download all LLM models to the image
 # RUN python ./download_resource.py
+
+# Copy the rest of the current directory contents into the container
+# Copy app code at last because this is the most likely to be changed
+COPY ./app .
 
 # CMD to run your main application script
 # CMD ["python", "/usr/src/app/app.py"]
