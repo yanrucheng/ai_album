@@ -18,7 +18,7 @@ COPY ./app .
 # Check if model_dev_cache exists and move it to /root/.cache if it does
 COPY ./model_cache /root/.cache
 # this will download all LLM models to the image
-RUN python ./download_resource.py
+# RUN python ./download_resource.py
 
 # CMD to run your main application script
 # CMD ["python", "/usr/src/app/app.py"]
