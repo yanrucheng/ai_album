@@ -4,6 +4,6 @@ pillow-heif==0.14.0
 salesforce-lavis==1.0.2
 similarities==1.1.6
 tqdm==4.66.1
-jupyter
-pyyaml
-nudenet
+jupyter==1.0.0
+PyYAML==6.0.1
+nudenet==3.0.8

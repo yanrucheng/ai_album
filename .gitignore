@@ -5,6 +5,7 @@ __pycache__/
 .DS_Store
 *data/*
 */.*cache/
+*cache*
 
 # C extensions
 *.so
