@@ -27,7 +27,7 @@ __pycache__/
 
 # Ignore various cache directories
 */.*cache/
-./app/.*cache
+**/.similarity_cache
 
 # C extensions
 *.so
