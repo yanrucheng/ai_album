@@ -5,7 +5,6 @@ __pycache__/
 .DS_Store
 *data/*
 */.*cache/
-*cache*
 **/notebook/data
 
 # C extensions
