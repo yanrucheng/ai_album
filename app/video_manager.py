@@ -67,7 +67,6 @@ class VideoManager:
         return batch_embeddings
 
     def _extract_and_cache_frames(self, video_path):
-        cache_dir = self._create_cache_directory(video_path)
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -80,7 +79,6 @@ class VideoManager:
                 break
 
             if frame_count % frame_interval == 0 or frame_count == total_frames - 1:
-                frame_path = os.path.join(cache_dir, f"frame_{frame_count}.jpg")
                 pil_image = self._cv_frame_to_pil_image(frame)
                 pil_image.thumbnail((1280, 720))
                 yield pil_image
@@ -88,13 +86,6 @@ class VideoManager:
             frame_count += 1
 
         cap.release()
-
-    def _create_cache_directory(self, video_path):
-        cache_dir = os.path.splitext(os.path.basename(video_path))[0]
-        cache_dir = f".similarity_cache/video/{cache_dir}_cache"
-        if not os.path.exists(cache_dir):
-            os.makedirs(cache_dir)
-        return cache_dir
 
     @staticmethod
     def _cv_frame_to_pil_image(frame):
