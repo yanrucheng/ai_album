@@ -158,7 +158,11 @@ class ImageSimilarity:
         return self.hcluster.cluster(distance_levels)
 
     def _generate_cluster_folder_prefix(self, file_paths):
-        lbls = set(tag_d['msg'] for f in file_paths for tag_d in self.tag_func(f)['nude_tag'].values() if tag_d['sensitive'])
+        lbls = set(
+            tag_d['msg']
+            for f in file_paths
+            for tag_d in self.tag_cache_manager.load(f)['nude_tag'].values()
+            if tag_d['sensitive'])
         if len(lbls) <= 0:
             return ''
         elif len(lbls) <= 3:

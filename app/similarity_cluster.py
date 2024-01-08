@@ -1,5 +1,6 @@
 from typing import List, Dict, Callable, Any
 from sklearn.cluster import AgglomerativeClustering
+from utils import MyPath
 
 Cluster = Dict[str, 'Cluster'] # recursive typing
 
