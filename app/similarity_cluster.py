@@ -70,9 +70,12 @@ class HierarchicalCluster:
                         sub_clusters.setdefault(label, []).append(cluster_data[idx])
 
                     new_clusters[cluster_id] = recursive_clustering(sub_clusters, level + 1)
-                else:
+                elif len(cluster_data) == 1:
                     # If only one item in cluster, no need for further clustering
-                    new_clusters[cluster_id] = cluster_data
+                    fp, _ = cluster_data[0]
+                    new_clusters[cluster_id] = [fp]
+                else:
+                    pass
 
             return new_clusters
 
@@ -111,8 +114,7 @@ class HierarchicalCluster:
         def generate_folder_name(image_path):
             caption = self.caption_func(image_path)
             folder_name = '-'.join(x.title() for x in caption.split())
-            p = MyPath(image_path)
-            return f'{p.date}-{folder_name}'
+            return folder_name
 
         def calculate_similarity(item1, item2):
             emb1 = self.emb_func(item1)
@@ -124,9 +126,13 @@ class HierarchicalCluster:
             return total_similarity / (len(items) - 1) if len(items) > 1 else 0
 
         def select_best_representation(items):
+            if len(items) == 0: return None
+            if len(items) == 1: return items[0]
+            
             return max(items, key=lambda item: average_similarity(item, items))
 
         def process_dict_for_similarity(d):
+            
             if isinstance(d, dict):
                 new_dict = {}
                 representations = list(d.keys()) + [img for sublist in d.values() if isinstance(sublist, list) for img in sublist]

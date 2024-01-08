@@ -4,6 +4,8 @@ import shutil
 import hashlib
 from functools import lru_cache
 from datetime import datetime
+from collections import Counter
+import hashlib
 
 from PIL import Image
 import cv2
@@ -38,11 +40,39 @@ def validate_media(paths):
 
     return valid_paths
 
-# Example usage:
-# paths = ['path/to/image1.jpg', '._path/to/systemfile', 'path/to/invalidvideo.mp4']
-# print(validate_media(paths))
+def get_mode(data):
+    '''Return a single mode. when there are multiple, return the samllest'''
+    if not data:
+        raise ValueError("The data list is empty")
 
-@lru_cache(maxsize=4096)
+    # Count the frequency of each item
+    counts = Counter(data)
+
+    # Find the maximum frequency
+    max_frequency = max(counts.values())
+
+    # Extract items with the maximum frequency and take the minimum
+    mode = min(item for item, count in counts.items() if count == max_frequency)
+    return mode
+
+@lru_cache(maxsize=8192)
+def stable_hash(obj) -> str:
+    # Convert the object to a string in a consistent manner
+    # Use repr for a standardized representation
+    obj_str = repr(obj)
+
+    # Encode the string into bytes
+    obj_bytes = obj_str.encode('utf-8')
+
+    # Create an MD5 hash object and update it with the byte-encoded data
+    hash_object = hashlib.md5(obj_bytes)
+
+    # Get the hexadecimal representation of the hash
+    hash_hex = hash_object.hexdigest()
+
+    return hash_hex
+
+@lru_cache(maxsize=8192)
 def md5(path):
     hash_md5 = hashlib.md5()
     with open(path, "rb") as f:

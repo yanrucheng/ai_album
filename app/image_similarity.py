@@ -11,7 +11,8 @@ from cache_manager import CacheManager
 from video_manager import VideoManager
 from myllm import ImageSimilarityCalculator, ImageCaptioner, NudeTagger, VQA, ImageTextMatcher
 from media_questionare import MediaQuestionare
-from utils import MyPath, validate_media
+from utils import MyPath, validate_media, get_mode
+from utils import MyPath
 from similarity_cluster import HierarchicalCluster, Cluster
 
 CAPTION_MIN_LENGTH = 10
@@ -161,14 +162,24 @@ class ImageSimilarity:
         return self.hcluster.cluster(distance_levels)
 
     def _generate_cluster_folder_prefix(self, file_paths):
-        lbls = set(
-            tag_d['msg']
-            for f in file_paths
-            for tag_d in self.tag_cache_manager.load(f)['nude_tag'].values()
-            if tag_d['sensitive'])
-        if len(lbls) <= 0:
-            return ''
-        elif len(lbls) <= 3:
-            return f"[{'-'.join(sorted(lbls))}]"
-        else:
-            return 'ITMC-'
+        def labels(file_paths):
+            lbls = set(
+                tag_d['msg']
+                for f in file_paths
+                for tag_d in self.tag_cache_manager.load(f)['nude_tag'].values()
+                if tag_d['sensitive'])
+            if len(lbls) <= 0:
+                return ''
+            elif len(lbls) <= 3:
+                return f"[{'-'.join(sorted(lbls))}]"
+            else:
+                return 'ITMC-'
+
+        def date(file_paths):
+            ds = [MyPath(f).date for f in file_paths]
+            return get_mode(ds)
+
+        label = labels(file_paths)
+        date = date(file_paths)
+        return label + date + '-'
+
