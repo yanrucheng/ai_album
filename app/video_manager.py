@@ -25,7 +25,7 @@ class VideoManager:
         self.emb_cache_manager   = CacheManager(target_path=folder_path,
                                                 cache_tag="emb",
                                                 generate_func=self._generate_embeddings,
-                                                format_str='{base}_{md5}/{base}_*.emb')
+                                                format_str='{base}_{md5}/{base}_emb_*.npy')
 
     def extract_key_frame(self, path, top_k=TOP_K_KEY_FRAME_SELECTION):
 

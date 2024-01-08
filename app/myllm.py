@@ -6,16 +6,13 @@ from lavis.models import load_model_and_preprocess
 import torch
 from nudenet import NudeDetector
 
-class ImageSimilarityCalculator(Singleton):
+class SimilarityCalculator(Singleton):
     def __init__(self):
         super().__init__()
         self.model = None
         
     def _load(self):
-        model_name = 'OFA-Sys/chinese-clip-vit-huge-patch14'
-        print('Loading ', model_name)
-        from similarities import ClipSimilarity
-        self.model = ClipSimilarity(model_name_or_path=model_name)
+        pass
 
     def get_embeddings(self, imgs, **kw):
         if self.model is None: self._load()
@@ -24,6 +21,26 @@ class ImageSimilarityCalculator(Singleton):
     def similarity_func(self, *args, **kw):
         from similarities import utils
         return utils.util.cos_sim(*args, **kw)
+
+class ImageSimilarityCalculator(SimilarityCalculator):
+    def __init__(self):
+        super().__init__()
+        
+    def _load(self):
+        from similarities import ClipSimilarity
+        model_name = 'OFA-Sys/chinese-clip-vit-huge-patch14'
+        print('Loading ', model_name)
+        self.model = ClipSimilarity(model_name_or_path=model_name)
+
+class TextSimilarityCalculator(SimilarityCalculator):
+    def __init__(self):
+        super().__init__()
+        
+    def _load(self):
+        from similarities import BertSimilarity
+        model_name = 'shibing624/text2vec-base-chinese'
+        print('Loading ', model_name)
+        self.model = BertSimilarity(model_name_or_path=model_name)
 
 
 class LavisModel:

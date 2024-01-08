@@ -50,7 +50,7 @@ class ImageSimilarity:
         self.embedding_cache_manager = CacheManager(target_path=folder_path,
                                                     cache_tag="emb",
                                                     generate_func=self._generate_embedding,
-                                                    format_str="{base}_{md5}.emb")
+                                                    format_str="{base}_{md5}_emb.npy")
         self.caption_cache_manager   = CacheManager(target_path=folder_path,
                                                     cache_tag="caption",
                                                     generate_func=self._generate_caption,
@@ -125,7 +125,7 @@ class ImageSimilarity:
 
         # add nude tags
         # bad implementation but no choice because of 3rd party implementation
-        thumb_path = self.thumbnail_cache_manager._get_cache_file_path(image_path)
+        thumb_path = self.thumbnail_cache_manager._to_cache_path_func(image_path)
         nude_tags = self.nt.detect(thumb_path)
         d['nude_tag'] = nude_tags
         return d
