@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir -r requirements-lock.txt
 # Check if model_dev_cache exists and move it to /root/.cache if it does
 COPY ./model_cache /root/.cache
 # this will download all LLM models to the image
-# RUN python ./download_resource.py
+RUN python ./download_resource.py
 
 # Copy the rest of the current directory contents into the container
 # Copy app code at last because this is the most likely to be changed
