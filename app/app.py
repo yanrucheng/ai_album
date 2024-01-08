@@ -32,7 +32,7 @@ def main():
     s.compute_all_tags()
 
     # Clustering images with specified distance levels
-    clusters = s.cluster_images_with_multilevel_hierarchical(distance_levels=args.distance_levels)
+    clusters = s.cluster(distance_levels=args.distance_levels)
 
     if args.output_path:
         # Copying files as clusters to the specified output path
