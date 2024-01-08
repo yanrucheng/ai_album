@@ -6,6 +6,7 @@ __pycache__/
 *data/*
 */.*cache/
 *cache*
+**/notebook/data
 
 # C extensions
 *.so
