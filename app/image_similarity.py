@@ -11,7 +11,7 @@ from cache_manager import CacheManager
 from video_manager import VideoManager
 from myllm import ImageSimilarityCalculator, ImageCaptioner, NudeTagger, VQA, ImageTextMatcher
 from media_questionare import MediaQuestionare
-from utils import MyPath
+from utils import MyPath, validate_media
 from similarity_cluster import HierarchicalCluster, Cluster
 
 CAPTION_MIN_LENGTH = 10
@@ -77,7 +77,10 @@ class ImageSimilarity:
         img_fps = sorted(os.path.join(root, f) for root, _, files in os.walk(folder_path) for f in files if self._is_image(f))
         vid_fps = sorted(os.path.join(root, f) for root, _, files in os.walk(folder_path) for f in files if self._is_video(f))
 
-        return img_fps + vid_fps
+        fps = img_fps + vid_fps
+        valid_fps = validate_media(fps)
+
+        return valid_fps
 
     @property
     def media_size():

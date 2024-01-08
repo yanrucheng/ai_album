@@ -5,6 +5,43 @@ import hashlib
 from functools import lru_cache
 from datetime import datetime
 
+from PIL import Image
+import cv2
+from pillow_heif import register_heif_opener
+register_heif_opener()
+
+def validate_media(paths):
+    valid_paths = []
+
+    for path in paths:
+        if path.startswith("._"):
+            continue
+
+        try:
+            if path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.heic', '.heif')):
+                # Try opening an image file
+                with Image.open(path) as img:
+                    img.verify()
+            elif path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.flv', '.webm')):
+                # Try opening a video file
+                cap = cv2.VideoCapture(path)
+                if not cap.isOpened():
+                    raise IOError("Cannot open video")
+                cap.release()
+            else:
+                print(f"Unsupported file format: {path}")
+                continue
+
+            valid_paths.append(path)
+        except (IOError, SyntaxError) as e:
+            print(f"Invalid media file detected: {path}")
+
+    return valid_paths
+
+# Example usage:
+# paths = ['path/to/image1.jpg', '._path/to/systemfile', 'path/to/invalidvideo.mp4']
+# print(validate_media(paths))
+
 @lru_cache(maxsize=4096)
 def md5(path):
     hash_md5 = hashlib.md5()
