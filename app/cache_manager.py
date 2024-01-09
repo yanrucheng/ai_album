@@ -48,8 +48,11 @@ class CacheManager:
             'path': self._get_cache_file_path_from_path,
             'hashable': self._get_cache_file_path_from_hashable,
         }[cache_key_type]
+        self.cache_key_type = cache_key_type
 
-    
+    def to_cache_path(self, key_obj):
+        return self._to_cache_path_func(key_obj)
+
     def _get_cache_file_path_from_hashable(self, hashable_obj):
         basename = utils.stable_hash(hashable_obj)
         basepath = self.format_str.format(base=basename, ext=self.cache_tag, cache_tag=self.cache_tag, md5=basename)
@@ -62,7 +65,13 @@ class CacheManager:
         cache_p = utils.MyPath(os.path.join(self.cache_folder, basename))
         return cache_p.abspath
 
-    def load(self, key):
+    def load(self, key_obj):
+
+        def _post_save(path):
+            if self.cache_key_type != 'path':
+                return
+            utils.inplace_overwrite_meta(key_obj, path)
+        
         def _save(data, path):
             if isinstance(data, Image.Image):
                 data.save(path, quality=IMG_QUALITY)
@@ -78,6 +87,8 @@ class CacheManager:
             else:
                 with open(path, 'wb') as file:
                     pickle.dump(data, file)
+                    
+            _post_save(path)
         
         def _load_individual_file(path):
             if path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff')):
@@ -97,7 +108,7 @@ class CacheManager:
                     return pickle.load(file)
 
 
-        cache_file_path = self._to_cache_path_func(key)
+        cache_file_path = self.to_cache_path(key_obj)
 
         # Check if cache file exists or if it matches any files when wildcard is present
         if '*' in cache_file_path:
@@ -105,7 +116,7 @@ class CacheManager:
             if not matched_files:
                 os.makedirs(os.path.dirname(cache_file_path), exist_ok=True)
                 i = 0
-                for item in self.generate_func(key):
+                for item in self.generate_func(key_obj):
                     i += 1
                     item_path = cache_file_path.replace('*', str(i))
                     _save(item, item_path)
@@ -113,9 +124,8 @@ class CacheManager:
             matched_files = glob.glob(cache_file_path)
             return [_load_individual_file(file_path) for file_path in sorted(matched_files)]
         else:
-            # print(key, cache_file_path)
             if not os.path.exists(cache_file_path):
-                data = self.generate_func(key)
+                data = self.generate_func(key_obj)
                 os.makedirs(os.path.dirname(cache_file_path), exist_ok=True)
                 _save(data, cache_file_path)
 

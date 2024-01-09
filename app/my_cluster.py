@@ -1,8 +1,81 @@
 from typing import List, Dict, Callable, Any
 from sklearn.cluster import AgglomerativeClustering
 from utils import MyPath
+import os
+import utils
 
 Cluster = Dict[str, 'Cluster'] # recursive typing
+
+Path = str
+def copy_file_as_cluster(clusters: Cluster, target_path: Path):
+    
+    def _copy_files_to_clusters(clusters, target_path, _current_path=""):
+        for cluster_id, contents in clusters.items():
+            # Create a new subdirectory for the current cluster
+            cluster_dir = os.path.join(target_path, _current_path, str(cluster_id))
+            os.makedirs(cluster_dir, exist_ok=True)
+    
+            if isinstance(contents, dict):
+                # If the contents are a dictionary, recurse into it
+                _copy_files_to_clusters(contents, target_path, os.path.join(_current_path, str(cluster_id)))
+            elif isinstance(contents, list):
+                # If the contents are a list, copy the files into the current cluster directory
+                for file_path in contents:
+                    utils.copy_with_meta(file_path, cluster_dir)
+                    
+    _copy_files_to_clusters(clusters=clusters, target_path=target_path)
+
+
+class ClusterLeafProcessor:
+    def __init__(self,
+                 obj_to_obj: Callable[[Any], Any] = None,
+                ):
+        if obj_to_obj is None:
+            obj_to_obj = lambda x: x
+        self.obj_to_obj = obj_to_obj
+
+    def process_cluster(self, clusters):
+        if isinstance(clusters, dict):
+            return {k:self.process_cluster(v) for k,v in clusters.items()}
+        elif isinstance(clusters, list):
+            return [self.obj_to_obj(x) for x in clusters]
+        else:
+            pass
+
+
+class ClusterKeyProcessor:
+    def __init__(self,
+                 objs_to_cluster_prefix: Callable[[List[Any]], str] = None
+                ):
+        
+        if objs_to_cluster_prefix is None:
+            objs_to_cluster_prefix = lambda _: ''
+        self.objs_to_cluster_prefix = objs_to_cluster_prefix
+
+    def name_cluster(self, clusters):
+        marked_clusters = self._cluster_marking(clusters)
+        return marked_clusters
+
+    def _cluster_marking(self, nested_dict):
+
+        def recurse(d):
+            if isinstance(d, dict):
+                new_dict = {}
+                res = set()
+                for key, value in d.items():
+                    d_, res_ = recurse(value)
+                    prefix = self.objs_to_cluster_prefix(res_)
+                    new_key = prefix + key
+                    res = res.union(res_)
+                    new_dict[new_key] = d_
+                return new_dict, res
+            else:
+                # For leaf nodes (list of file paths), just return them
+                return d, set(d)
+
+        d, _ = recurse(nested_dict)
+        return d
+
 
 class HierarchicalCluster:
 
@@ -10,20 +83,15 @@ class HierarchicalCluster:
                  data: List[Any],
                  embedding_func: List[Any],
                  similarity_func: Callable[[Any, Any], float],
-                 caption_func: Callable[[Any], str] = None,
-                 group_prefix_func: Callable[[List[Any]], str] = None
+                 obj_to_name: Callable[[Any], str] = None,
                 ):
         self.data = data
         self.emb_func = embedding_func
         self.sim_func = similarity_func
         
-        if caption_func is None:
-            caption_func = lambda x: x if isinstance(x, str) else 'default_caption'
-        self.caption_func = caption_func
-        
-        if group_prefix_func is None:
-            group_prefix_func = lambda _: ''
-        self.prefix_func = group_prefix_func
+        if obj_to_name is None:
+            obj_to_name = lambda x: x if isinstance(x, str) else 'default_caption'
+        self.obj_to_name = obj_to_name
 
     @property
     def media_size(self) -> int:
@@ -86,33 +154,11 @@ class HierarchicalCluster:
             result_clusters = {0: self.data}
 
         named_clusters = self._cluster_naming(result_clusters)
-        marked_clusters = self._cluster_marking(named_clusters)
-
-        return marked_clusters
-
-    def _cluster_marking(self, nested_dict):
-
-        def recurse(d):
-            if isinstance(d, dict):
-                new_dict = {}
-                res = set()
-                for key, value in d.items():
-                    d_, res_ = recurse(value)
-                    prefix = self.prefix_func(res_)
-                    new_key = prefix + key
-                    res = res.union(res_)
-                    new_dict[new_key] = d_
-                return new_dict, res
-            else:
-                # For leaf nodes (list of file paths), just return them
-                return d, set(d)
-
-        d, _ = recurse(nested_dict)
-        return d
+        return named_clusters
 
     def _cluster_naming(self, clusters):
         def generate_folder_name(image_path):
-            caption = self.caption_func(image_path)
+            caption = self.obj_to_name(image_path)
             folder_name = '-'.join(x.title() for x in caption.split())
             return folder_name
 

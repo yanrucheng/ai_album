@@ -4,6 +4,7 @@ from PIL import Image
 
 from cache_manager import CacheManager
 from myllm import ImageSimilarityCalculator
+from media_manager import MediaManager
 
 INTERVAL = 3
 TOP_K_KEY_FRAME_SELECTION = 0.5
@@ -80,7 +81,7 @@ class VideoManager:
 
             if frame_count % frame_interval == 0 or frame_count == total_frames - 1:
                 pil_image = self._cv_frame_to_pil_image(frame)
-                pil_image.thumbnail((1280, 720))
+                MediaManager.as_720_thumbnail_inplace(pil_image)
                 yield pil_image
 
             frame_count += 1

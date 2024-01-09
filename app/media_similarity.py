@@ -11,14 +11,15 @@ from cache_manager import CacheManager
 from video_manager import VideoManager
 from myllm import ImageSimilarityCalculator, ImageCaptioner, NudeTagger, VQA, ImageTextMatcher
 from media_questionare import MediaQuestionare
-from utils import MyPath, validate_media, get_mode
-from utils import MyPath
-from similarity_cluster import HierarchicalCluster, Cluster
+from utils import MyPath, get_mode
+from media_manager import MediaManager
+from my_cluster import HierarchicalCluster, ClusterKeyProcessor, ClusterLeafProcessor
+from my_cluster import Cluster
 
 CAPTION_MIN_LENGTH = 10
 CAPTION_MAX_LENGTH = 30
 
-class ImageSimilarity:
+class MediaSimilarity:
     def __init__(self,
                  folder_path,
                  questionare_on=False,
@@ -34,7 +35,7 @@ class ImageSimilarity:
 
         self.questionare_on = questionare_on
         self.folder_path = folder_path
-        self.media_fps = self._load_image_paths(folder_path)
+        self.media_fps = MediaManager.get_all_valid_media(folder_path)
         self.video_mng = VideoManager(folder_path)
         self.cp = ImageCaptioner()
 
@@ -63,47 +64,28 @@ class ImageSimilarity:
 
 
         # Initialize similarity cluster
-        self.hcluster = HierarchicalCluster(data = self.media_fps,
-                                            embedding_func = self.embedding_cache_manager.load,
-                                            similarity_func = self.similarity_model.similarity_func,
-                                            caption_func = self.caption_cache_manager.load, # optional
-                                            group_prefix_func = self._generate_cluster_folder_prefix # optional
-                                           )
+        self.hcluster =   HierarchicalCluster(data = self.media_fps,
+                                              embedding_func = self.embedding_cache_manager.load,
+                                              similarity_func = self.similarity_model.similarity_func,
+                                              obj_to_name = self.caption_cache_manager.load)
+        self.ckp =     ClusterKeyProcessor(objs_to_cluster_prefix = self._generate_cluster_folder_prefix)
+        self.clp = ClusterLeafProcessor(obj_to_obj = self.thumbnail_cache_manager.to_cache_path)
         
-        print("Loaded similarity model and image file paths.")
         self._initialize()
-        print("Initialization complete.")
-
-    def _load_image_paths(self, folder_path):
-        img_fps = sorted(os.path.join(root, f) for root, _, files in os.walk(folder_path) for f in files if self._is_image(f))
-        vid_fps = sorted(os.path.join(root, f) for root, _, files in os.walk(folder_path) for f in files if self._is_video(f))
-
-        fps = img_fps + vid_fps
-        valid_fps = validate_media(fps)
-
-        return valid_fps
 
     @property
     def media_size():
         return len(self.media_fps)
 
-    def _is_image(self, path):
-        file_extensions = ['*.jpg', '*.jpeg', '*.png', '*.heic', '*.heif']
-        return any(fnmatch.fnmatch(path.lower(), ext) for ext in file_extensions)
-
-    def _is_video(self, path):
-        file_extensions = ['*.mp4', '*.avi', '*.webm', '*.mkv', '*.mov']
-        return any(fnmatch.fnmatch(path.lower(), ext) for ext in file_extensions)
-
     def _compute_and_save_thumbnail(self, image_path):
         def compute_thumbnail(path):
-            if self._is_image(path):
+            if MediaManager.is_image(path):
                 with Image.open(image_path) as img:
                     img.load()
-                    img.thumbnail((1280, 720))
+                    MediaManager.as_720_thumbnail_inplace(img)
                     return img
 
-            if self._is_video(path):
+            if MediaManager.is_video(path):
                 return self.video_mng.extract_key_frame(path)
 
             return None
@@ -129,7 +111,7 @@ class ImageSimilarity:
 
         # add nude tags
         # bad implementation but no choice because of 3rd party implementation
-        thumb_path = self.thumbnail_cache_manager._to_cache_path_func(image_path)
+        thumb_path = self.thumbnail_cache_manager.to_cache_path(image_path)
         nude_tags = self.nt.detect(thumb_path)
         d['nude_tag'] = nude_tags
         return d
@@ -158,8 +140,21 @@ class ImageSimilarity:
         img = self.thumbnail_cache_manager.load(image_path)
         return self.cp.caption(img, max_length=CAPTION_MAX_LENGTH, min_length=CAPTION_MIN_LENGTH)[0]
 
-    def cluster(self, distance_levels) -> Cluster:
-        return self.hcluster.cluster(distance_levels)
+    def cluster(self, *distance_levels, output_type='thumbnail') -> Cluster:
+
+        assert output_type in ('thumbnail', 'original'), \
+            f'Only support output_type in (thumbnail, original). got {output_type}'
+        
+        c = self.hcluster.cluster(distance_levels)
+        c_named = self.ckp.name_cluster(c)
+        
+        if output_type == 'thumbnail':
+            return self.clp.process_cluster(c_named)
+        elif output_type == 'original':
+            return c_named
+        else:
+            pass
+            
 
     def _generate_cluster_folder_prefix(self, file_paths):
         def labels(file_paths):

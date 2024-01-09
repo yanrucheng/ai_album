@@ -1,44 +1,38 @@
 import os
 import shutil
-import shutil
 import hashlib
 from functools import lru_cache
 from datetime import datetime
 from collections import Counter
 import hashlib
 
-from PIL import Image
-import cv2
-from pillow_heif import register_heif_opener
-register_heif_opener()
+import sys
+import contextlib
 
-def validate_media(paths):
-    valid_paths = []
 
-    for path in paths:
-        if path.startswith("._"):
-            continue
+@contextlib.contextmanager
+def suppress_c_stdout_stderr():
+    """A context manager that redirects C-level stdout and stderr to /dev/null"""
+    # Flush Python-level buffers
+    sys.stdout.flush()
+    sys.stderr.flush()
+
+    # Duplicate file descriptors
+    with open(os.devnull, 'wb') as fnull:
+        old_stdout_fd = os.dup(sys.stdout.fileno())
+        old_stderr_fd = os.dup(sys.stderr.fileno())
+
+        os.dup2(fnull.fileno(), sys.stdout.fileno())
+        os.dup2(fnull.fileno(), sys.stderr.fileno())
 
         try:
-            if path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.heic', '.heif')):
-                # Try opening an image file
-                with Image.open(path) as img:
-                    img.verify()
-            elif path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.flv', '.webm')):
-                # Try opening a video file
-                cap = cv2.VideoCapture(path)
-                if not cap.isOpened():
-                    raise IOError("Cannot open video")
-                cap.release()
-            else:
-                print(f"Unsupported file format: {path}")
-                continue
-
-            valid_paths.append(path)
-        except (IOError, SyntaxError) as e:
-            print(f"Invalid media file detected: {path}")
-
-    return valid_paths
+            yield
+        finally:
+            # Restore file descriptors
+            os.dup2(old_stdout_fd, sys.stdout.fileno())
+            os.dup2(old_stderr_fd, sys.stderr.fileno())
+            os.close(old_stdout_fd)
+            os.close(old_stderr_fd)
 
 def get_mode(data):
     '''Return a single mode. when there are multiple, return the samllest'''
@@ -140,33 +134,19 @@ class SingletonMeta(type):
 class Singleton(metaclass=SingletonMeta):
     def __init__(self):
         super().__init__()
-        
-def copy_file_as_cluster(clusters, target_path):
 
-    def _copy(src, dst):
-        # Copy the file
-        shutil.copy2(src, dst)
+Path = str
+def copy_with_meta(src: Path, dst: Path):
+    # Copy the file
+    shutil.copy2(src, dst)
+    inplace_overwrite_meta(src, dst)
+
+def inplace_overwrite_meta(src: Path, target: Path):
+    # Get timestamps from the source file
+    stat_src = os.stat(src)
+    atime = stat_src.st_atime  # Access time
+    mtime = stat_src.st_mtime  # Modification time
+
+    # Apply timestamps to the destination file
+    os.utime(target, (atime, mtime))
     
-        # Get timestamps from the source file
-        stat_src = os.stat(src)
-        atime = stat_src.st_atime  # Access time
-        mtime = stat_src.st_mtime  # Modification time
-    
-        # Apply timestamps to the destination file
-        os.utime(dst, (atime, mtime))
-    
-    def _copy_files_to_clusters(clusters, target_path, _current_path=""):
-        for cluster_id, contents in clusters.items():
-            # Create a new subdirectory for the current cluster
-            cluster_dir = os.path.join(target_path, _current_path, str(cluster_id))
-            os.makedirs(cluster_dir, exist_ok=True)
-    
-            if isinstance(contents, dict):
-                # If the contents are a dictionary, recurse into it
-                _copy_files_to_clusters(contents, target_path, os.path.join(_current_path, str(cluster_id)))
-            elif isinstance(contents, list):
-                # If the contents are a list, copy the files into the current cluster directory
-                for file_path in contents:
-                    _copy(file_path, cluster_dir)
-                    
-    _copy_files_to_clusters(clusters=clusters, target_path=target_path)

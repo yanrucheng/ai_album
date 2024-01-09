@@ -14,7 +14,7 @@ def main():
     s.compute_all_tags()
 
     # Clustering images with specified distance levels
-    clusters = s.cluster(distance_levels=[2,0.5])
+    clusters = s.cluster(2, 0.5)
 
 if __name__ == "__main__":
     main()
