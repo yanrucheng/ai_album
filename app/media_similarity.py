@@ -58,11 +58,11 @@ class MediaSimilarity:
         self.caption_cache_manager   = CacheManager(target_path=folder_path,
                                                     cache_tag="caption",
                                                     generate_func=self._generate_caption,
-                                                    format_str="{base}_{md5}_caption.txt")
+                                                    format_str="{base}_{file_hash}_caption.txt")
         self.tag_cache_manager       = CacheManager(target_path=folder_path,
                                                     cache_tag="tag",
                                                     generate_func=self._generate_tags,
-                                                    format_str="{base}_{md5}_tag.yml")
+                                                    format_str="{base}_{file_hash}_tag.yml")
 
 
         # Initialize similarity cluster
