@@ -25,14 +25,14 @@ class CacheManager:
                  cache_root_path: Path = '',
                  cache_folder_name: str = '',
                  cache_key_type: str = 'path', # 'path' or 'hashable'
-                 format_str: str = "{base}_{ext}_{cache_tag}_{md5}.jpg"):
+                 format_str: str = "{base}_{ext}_{cache_tag}_{file_hash}.jpg"):
 
         assert target_path or (cache_root_path and cache_folder_name), \
             'Either target path or (cache root path and cache folder name) should be provided'
 
         assert cache_key_type in ('path', 'hashable'), \
             "cache_key_type should be within 'path' and 'hashable'."
-        
+
 
         self.cache_tag = cache_tag
         self.generate_func = generate_func
@@ -55,13 +55,13 @@ class CacheManager:
 
     def _get_cache_file_path_from_hashable(self, hashable_obj):
         basename = utils.stable_hash(hashable_obj)
-        basepath = self.format_str.format(base=basename, ext=self.cache_tag, cache_tag=self.cache_tag, md5=basename)
+        basepath = self.format_str.format(base=basename, ext=self.cache_tag, cache_tag=self.cache_tag, file_hash=basename)
         cache_p = utils.MyPath(os.path.join(self.cache_folder, basepath))
         return cache_p.abspath
 
     def _get_cache_file_path_from_path(self, path):
         p = utils.MyPath(path)
-        basename = self.format_str.format(base=p.basename, ext=p.extension, cache_tag=self.cache_tag, md5=p.md5)
+        basename = self.format_str.format(base=p.basename, ext=p.extension, cache_tag=self.cache_tag, file_hash=p.hash)
         cache_p = utils.MyPath(os.path.join(self.cache_folder, basename))
         return cache_p.abspath
 
@@ -71,7 +71,7 @@ class CacheManager:
             if self.cache_key_type != 'path':
                 return
             utils.inplace_overwrite_meta(key_obj, path)
-        
+
         def _save(data, path):
             if isinstance(data, Image.Image):
                 data.save(path, quality=IMG_QUALITY)
@@ -87,9 +87,9 @@ class CacheManager:
             else:
                 with open(path, 'wb') as file:
                     pickle.dump(data, file)
-                    
+
             _post_save(path)
-        
+
         def _load_individual_file(path):
             if path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff')):
                 with Image.open(path) as img:
@@ -120,7 +120,7 @@ class CacheManager:
                     i += 1
                     item_path = cache_file_path.replace('*', str(i))
                     _save(item, item_path)
-                    
+
             matched_files = glob.glob(cache_file_path)
             return [_load_individual_file(file_path) for file_path in sorted(matched_files)]
         else:

@@ -50,11 +50,11 @@ class MediaSimilarity:
         self.thumbnail_cache_manager = CacheManager(target_path=folder_path,
                                                     cache_tag="thumbnail",
                                                     generate_func=self._compute_and_save_thumbnail,
-                                                    format_str="{base}_thumbnail_{md5}.jpg")
+                                                    format_str="{base}_thumbnail_{file_hash}.jpg")
         self.embedding_cache_manager = CacheManager(target_path=folder_path,
                                                     cache_tag="emb",
                                                     generate_func=self._generate_embedding,
-                                                    format_str="{base}_{md5}_emb.npy")
+                                                    format_str="{base}_{file_hash}_emb.npy")
         self.caption_cache_manager   = CacheManager(target_path=folder_path,
                                                     cache_tag="caption",
                                                     generate_func=self._generate_caption,

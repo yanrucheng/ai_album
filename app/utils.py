@@ -82,6 +82,28 @@ def md5(path):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
 
+
+@lru_cache(maxsize=8192)
+def partial_file_hash(path, chunk_size=4096):
+    hash_md5 = hashlib.md5()
+    file_size = os.path.getsize(path)
+
+    with open(path, "rb") as f:
+        if file_size <= chunk_size * 3:
+            # If the file is small, read the entire file
+            hash_md5.update(f.read())
+        else:
+            # Read the start, middle, and end of the file
+            f.seek(0)
+            hash_md5.update(f.read(chunk_size))
+            f.seek(file_size // 2)
+            hash_md5.update(f.read(chunk_size))
+            f.seek(-chunk_size, os.SEEK_END)
+            hash_md5.update(f.read(chunk_size))
+
+    return hash_md5.hexdigest()
+
+
 # Path related
 
 class MyPath:
@@ -104,8 +126,8 @@ class MyPath:
         return os.path.abspath(os.path.expanduser(self.path))
 
     @property
-    def md5(self):
-        return md5(self.path)
+    def hash(self):
+        return partial_file_hash(self.path)
 
     @property
     def date(self):
