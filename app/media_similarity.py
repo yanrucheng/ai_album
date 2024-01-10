@@ -16,6 +16,8 @@ from media_manager import MediaManager
 from my_cluster import HierarchicalCluster, ClusterKeyProcessor, ClusterLeafProcessor
 from my_cluster import Cluster
 
+from functools import lru_cache
+
 CAPTION_MIN_LENGTH = 10
 CAPTION_MAX_LENGTH = 30
 
@@ -70,7 +72,7 @@ class MediaSimilarity:
                                               obj_to_name = self.caption_cache_manager.load)
         self.ckp =     ClusterKeyProcessor(objs_to_cluster_prefix = self._generate_cluster_folder_prefix)
         self.clp = ClusterLeafProcessor(obj_to_obj = self.thumbnail_cache_manager.to_cache_path)
-        
+
         self._initialize()
 
     @property
@@ -140,21 +142,14 @@ class MediaSimilarity:
         img = self.thumbnail_cache_manager.load(image_path)
         return self.cp.caption(img, max_length=CAPTION_MAX_LENGTH, min_length=CAPTION_MIN_LENGTH)[0]
 
-    def cluster(self, *distance_levels, output_type='thumbnail') -> Cluster:
-
-        assert output_type in ('thumbnail', 'original'), \
-            f'Only support output_type in (thumbnail, original). got {output_type}'
-        
+    @lru_cache(maxsize=64)
+    def cluster(self, *distance_levels) -> Cluster:
         c = self.hcluster.cluster(distance_levels)
         c_named = self.ckp.name_cluster(c)
-        
-        if output_type == 'thumbnail':
-            return self.clp.process_cluster(c_named)
-        elif output_type == 'original':
-            return c_named
-        else:
-            pass
-            
+        return c_named
+
+    def cluster_to_thumbnail(self, cluster):
+        return self.clp.process_cluster(cluster)
 
     def _generate_cluster_folder_prefix(self, file_paths):
         def labels(file_paths):

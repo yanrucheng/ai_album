@@ -5,10 +5,13 @@ from functools import lru_cache
 from datetime import datetime
 from collections import Counter
 import hashlib
+from pathlib import Path
 
 import sys
 import contextlib
 
+
+# Print related
 
 @contextlib.contextmanager
 def suppress_c_stdout_stderr():
@@ -34,6 +37,9 @@ def suppress_c_stdout_stderr():
             os.close(old_stdout_fd)
             os.close(old_stderr_fd)
 
+
+# Arithmetic calculation related
+
 def get_mode(data):
     '''Return a single mode. when there are multiple, return the samllest'''
     if not data:
@@ -48,6 +54,8 @@ def get_mode(data):
     # Extract items with the maximum frequency and take the minimum
     mode = min(item for item, count in counts.items() if count == max_frequency)
     return mode
+
+# Hash related
 
 @lru_cache(maxsize=8192)
 def stable_hash(obj) -> str:
@@ -74,6 +82,8 @@ def md5(path):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
 
+# Path related
+
 class MyPath:
 
     def __init__(self, path):
@@ -83,7 +93,7 @@ class MyPath:
     def basename(self):
         """ Extracts the basename from a given file path. """
         return os.path.splitext(os.path.basename(self.path))[0]
-    
+
     @property
     def extension(self):
         """ Extracts the extension from a given file path, without the dot. """
@@ -92,7 +102,7 @@ class MyPath:
     @property
     def abspath(self):
         return os.path.abspath(os.path.expanduser(self.path))
-    
+
     @property
     def md5(self):
         return md5(self.path)
@@ -102,14 +112,14 @@ class MyPath:
         try:
             # Get creation time (on Windows) or the last metadata change (on Unix)
             creation_time = os.path.getctime(self.path)
-    
+
             # Get last modification time
             modification_time = os.path.getmtime(self.path)
-    
+
             # Format times or set to None if they're not available
             creation_date = datetime.fromtimestamp(creation_time).strftime('%y%m%d') if creation_time else None
             modification_date = datetime.fromtimestamp(modification_time).strftime('%y%m%d') if modification_time else None
-    
+
             # Determine which date to use
             if creation_date:
                 return creation_date
@@ -121,6 +131,63 @@ class MyPath:
             print(f"Error getting dates for {self.path}: {error}")
             return None
 
+# OS related
+
+PathType = str
+
+def create_relative_symlink(target_path: PathType, link_folder: PathType):
+    """
+    Create a relative symbolic link inside 'link_folder' pointing to 'target_path'.
+    The name of the symbolic link will be the same as the name of the target.
+
+    Args:
+    target_path (str): The path to the target file or directory.
+    link_folder (str): The folder where the symbolic link will be created.
+    """
+    assert target_path and link_folder, \
+            f'Both target_path, link_folder are a must. got target_path={target_path}; link_folder={link_folder}'
+
+    # Convert strings to Path objects and resolve to absolute paths
+    target_path = Path(target_path).resolve()
+    link_folder = Path(link_folder).resolve()
+
+    # Ensure link_folder exists
+    link_folder.mkdir(parents=True, exist_ok=True)
+
+    # Extract the name from target_path to use as the link name
+    link_name = target_path.name
+
+    # Calculate the relative path from link_folder to target_path
+    rel_path = os.path.relpath(target_path, link_folder)
+
+    # Path for the symbolic link
+    link_path = link_folder / link_name
+
+    # Create a symbolic link
+    os.symlink(rel_path, link_path)
+
+
+# Example usage
+# create_relative_symlink('/path/to/target', '/path/to/link_folder')
+
+def copy_with_meta(src: PathType, dst: PathType):
+    assert src and dst, f'Both src, dst are a must. got src={src}; dst={dst}'
+
+    # Copy the file
+    shutil.copy2(src, dst)
+    inplace_overwrite_meta(src, dst)
+
+def inplace_overwrite_meta(src: PathType, target: PathType):
+    # Get timestamps from the source file
+    stat_src = os.stat(src)
+    atime = stat_src.st_atime  # Access time
+    mtime = stat_src.st_mtime  # Modification time
+
+    # Apply timestamps to the destination file
+    os.utime(target, (atime, mtime))
+
+
+# Model related
 
 class SingletonMeta(type):
     _instances = {}
@@ -135,18 +202,3 @@ class Singleton(metaclass=SingletonMeta):
     def __init__(self):
         super().__init__()
 
-Path = str
-def copy_with_meta(src: Path, dst: Path):
-    # Copy the file
-    shutil.copy2(src, dst)
-    inplace_overwrite_meta(src, dst)
-
-def inplace_overwrite_meta(src: Path, target: Path):
-    # Get timestamps from the source file
-    stat_src = os.stat(src)
-    atime = stat_src.st_atime  # Access time
-    mtime = stat_src.st_mtime  # Modification time
-
-    # Apply timestamps to the destination file
-    os.utime(target, (atime, mtime))
-    

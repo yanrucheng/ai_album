@@ -2,6 +2,7 @@ import argparse
 from media_similarity import MediaSimilarity
 from my_cluster import copy_file_as_cluster
 import pprint
+import utils
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='AI-Album, an LLM-based AI auto media grouper')
@@ -9,24 +10,23 @@ def parse_arguments():
     # Add arguments
     parser.add_argument('folder_path', type=str,
                         help='Path to the folder containing images')
-    parser.add_argument('-b', '--batch_size', type=int, default=16,
+    parser.add_argument('-b', '--batch-size', type=int, default=16,
                         help='Batch size for processing images (default: 16)')
-    parser.add_argument('-qon', '--questionare_on', type=bool, default=False,
+    parser.add_argument('-qon', '--questionare-on', type=bool, default=False,
                         help='Turn on calculation for image questionare. This adds 8G additional memory (default: False)')
-    parser.add_argument('-sp', '--show_progress', action='store_true',
+    parser.add_argument('-sp', '--show-progress', action='store_true',
                         help='Show progress bar during processing')
-    parser.add_argument('-dl', '--distance_levels', nargs='*',
+    parser.add_argument('-dl', '--distance-levels', nargs='*',
                         type=float, default=[2, 0.5],
                         help='List of distance levels for hierarchical clustering (default: [2, 0.5])')
-    parser.add_argument('-o', '--output_path', type=str, default='',
+    parser.add_argument('-o', '--output-path', type=str, default='',
                         help='Output path to copy files as clusters (default: ./data/testoutput/)')
-    parser.add_argument('-ot', '--output_type', choices=['thumbnail', 'original'],
-                        default='thumbnail',
-                        help='The type of output: "thumbnail" or "original"')
+    parser.add_argument('-ot', '--output-type', nargs='+',
+                        choices=['thumbnail', 'original', 'link'],
+                        default=['thumbnail', 'link'],
+                        help='Output types can be (one/multiple of)thumbnail, original, or link')
 
     args = parser.parse_args()
-    if args.output_path == '':
-        args.output_type = 'original'
     return args
 
 def main():
@@ -45,15 +45,23 @@ def main():
     s.compute_all_tags()
 
     # Clustering images with specified distance levels
-    clusters = s.cluster(*args.distance_levels, output_type=args.output_type)
+    clusters = s.cluster(*args.distance_levels)
 
-    if args.output_path:
-        # Copying files as clusters to the specified output path
-        copy_file_as_cluster(clusters, args.output_path)
-    else:
+    if not args.output_path:
         pprint.pprint(clusters)
+        return
 
-    # Additional logic can be added here
+    if 'original' in args.output_type:
+        copy_file_as_cluster(clusters, args.output_path)
+    if 'thumbnail' in args.output_type:
+        thumb_clusters = s.cluster_to_thumbnail(clusters)
+        copy_file_as_cluster(thumb_clusters, args.output_path)
+    if 'link' in args.output_type:
+        copy_file_as_cluster(clusters,
+                             args.output_path,
+                             operator = utils.create_relative_symlink,
+                             )
+
 
 if __name__ == "__main__":
     main()

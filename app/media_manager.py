@@ -42,7 +42,7 @@ class MediaManager(Singleton):
     @classmethod
     def is_image(cls, path):
         return path.lower().endswith(cls.image_exts)
-        
+
     @classmethod
     def is_video(cls, path):
         return path.lower().endswith(cls.video_exts)
@@ -51,11 +51,11 @@ class MediaManager(Singleton):
     def validate_media(cls, paths):
         print('Validating all media...')
         valid_paths = []
-    
+
         for path in paths:
             if os.path.split(path)[1].startswith("._"):
                 continue
-    
+
             try:
                 if cls.is_image(path):
                     # Try opening an image file
@@ -71,9 +71,9 @@ class MediaManager(Singleton):
                 else:
                     print(f"Unsupported file format: {path}")
                     continue
-    
+
                 valid_paths.append(path)
             except (IOError, SyntaxError) as e:
                 print(f"Invalid media file detected: {path}. An error occurred: {e})")
-    
+
         return valid_paths

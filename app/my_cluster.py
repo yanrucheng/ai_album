@@ -7,22 +7,25 @@ import utils
 Cluster = Dict[str, 'Cluster'] # recursive typing
 
 Path = str
-def copy_file_as_cluster(clusters: Cluster, target_path: Path):
-    
+def copy_file_as_cluster(clusters: Cluster,
+                         target_path: Path,
+                         operator: Callable[[str], str] = utils.copy_with_meta,
+                         ):
+
     def _copy_files_to_clusters(clusters, target_path, _current_path=""):
         for cluster_id, contents in clusters.items():
             # Create a new subdirectory for the current cluster
             cluster_dir = os.path.join(target_path, _current_path, str(cluster_id))
             os.makedirs(cluster_dir, exist_ok=True)
-    
+
             if isinstance(contents, dict):
                 # If the contents are a dictionary, recurse into it
                 _copy_files_to_clusters(contents, target_path, os.path.join(_current_path, str(cluster_id)))
             elif isinstance(contents, list):
                 # If the contents are a list, copy the files into the current cluster directory
                 for file_path in contents:
-                    utils.copy_with_meta(file_path, cluster_dir)
-                    
+                    operator(file_path, cluster_dir)
+
     _copy_files_to_clusters(clusters=clusters, target_path=target_path)
 
 
@@ -47,7 +50,7 @@ class ClusterKeyProcessor:
     def __init__(self,
                  objs_to_cluster_prefix: Callable[[List[Any]], str] = None
                 ):
-        
+
         if objs_to_cluster_prefix is None:
             objs_to_cluster_prefix = lambda _: ''
         self.objs_to_cluster_prefix = objs_to_cluster_prefix
@@ -88,7 +91,7 @@ class HierarchicalCluster:
         self.data = data
         self.emb_func = embedding_func
         self.sim_func = similarity_func
-        
+
         if obj_to_name is None:
             obj_to_name = lambda x: x if isinstance(x, str) else 'default_caption'
         self.obj_to_name = obj_to_name
@@ -174,11 +177,11 @@ class HierarchicalCluster:
         def select_best_representation(items):
             if len(items) == 0: return None
             if len(items) == 1: return items[0]
-            
+
             return max(items, key=lambda item: average_similarity(item, items))
 
         def process_dict_for_similarity(d):
-            
+
             if isinstance(d, dict):
                 new_dict = {}
                 representations = list(d.keys()) + [img for sublist in d.values() if isinstance(sublist, list) for img in sublist]
