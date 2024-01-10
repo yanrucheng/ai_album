@@ -21,7 +21,7 @@ COPY ./app .
 
 # this will download all LLM models to the image if not exist
 # this will ensure all the functionality works
-RUN python ./app.py ./samples/samples --output_path ./samples/test
+RUN python ./app.py ./samples/samples -o ./samples/test
 
 # CMD to run your main application script
 # CMD ["python", "/usr/src/app/app.py"]
