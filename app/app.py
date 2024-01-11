@@ -15,7 +15,7 @@ def parse_arguments():
                         help='Batch size for processing images (default: 16)')
     parser.add_argument('-sp', '--show-progress', action='store_true',
                         help='Show progress bar during processing')
-    parser.add_argument('-cr', '--check-rotation', action='store_true',
+    parser.add_argument('-dr', '--disable-rotation', action='store_true',
                         help='Check for media orientation and rotate them to standard direction.')
     parser.add_argument('-dl', '--distance-levels', nargs='*',
                         type=float, default=[2, 0.5],
@@ -52,7 +52,7 @@ def main():
     # Usage
     s = MediaCenter(args.folder_path,
                     batch_size=args.batch_size,
-                    check_rotation=args.check_rotation,
+                    check_rotation=not args.disable_rotation,
                     show_progress_bar=args.show_progress)
 
     # Compute all captions
