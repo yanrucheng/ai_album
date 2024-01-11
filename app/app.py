@@ -1,5 +1,5 @@
 import argparse
-from media_similarity import MediaSimilarity
+from media_center import MediaCenter
 from my_cluster import copy_file_as_cluster
 import pprint
 import os
@@ -13,10 +13,10 @@ def parse_arguments():
                         help='Path to the folder containing images')
     parser.add_argument('-b', '--batch-size', type=int, default=16,
                         help='Batch size for processing images (default: 16)')
-    parser.add_argument('-qon', '--questionare-on', type=bool, default=False,
-                        help='Turn on calculation for image questionare. This adds 8G additional memory (default: False)')
     parser.add_argument('-sp', '--show-progress', action='store_true',
                         help='Show progress bar during processing')
+    parser.add_argument('-cr', '--check-rotation', action='store_true',
+                        help='Check for media orientation and rotate them to standard direction.')
     parser.add_argument('-dl', '--distance-levels', nargs='*',
                         type=float, default=[2, 0.5],
                         help='List of distance levels for hierarchical clustering (default: [2, 0.5])')
@@ -28,30 +28,32 @@ def parse_arguments():
                         help='Output types can be (one/multiple of)thumbnail, original, or link')
 
     args = parser.parse_args()
-
     if args.output_path == 'default':
         args.output_path = to_default_output_path(args.folder_path)
-
     return args
 
+@utils.ensure_unique_path
 def to_default_output_path(in_path):
     return in_path.rstrip('/').rstrip('\\') + '_clustered'
 
 def validate_output_folder(path):
-    if path in ('', 'print', 'default'): return path
-    if os.path.isdir(path): return path
+    if path in ('', 'print', 'default'):
+        return path
+    # Check if it's a simple directory name or a valid path structure
+    if os.path.basename(path) and (not os.path.exists(path) or os.path.isdir(path)):
+        return path
     else:
-        raise argparse.ArgumentTypeError(f"'{path}' is not a valid path or 'print' or empty")
+        raise argparse.ArgumentTypeError(f"'{path}' is not a valid potential directory path or'print' or '' or 'default'")
 
 
 def main():
     args = parse_arguments()
 
     # Usage
-    s = MediaSimilarity(args.folder_path,
-                        batch_size=args.batch_size,
-                        questionare_on=args.questionare_on,
-                        show_progress_bar=args.show_progress)
+    s = MediaCenter(args.folder_path,
+                    batch_size=args.batch_size,
+                    check_rotation=args.check_rotation,
+                    show_progress_bar=args.show_progress)
 
     # Compute all captions
     s.compute_all_captions()
@@ -70,15 +72,16 @@ def main():
         return
 
     if 'original' in args.output_type:
-        copy_file_as_cluster(clusters, args.output_path)
+        copy_file_as_cluster(clusters,
+                             args.output_path,
+                             operator = s.copy_with_meta_rotate)
     if 'thumbnail' in args.output_type:
         thumb_clusters = s.cluster_to_thumbnail(clusters)
         copy_file_as_cluster(thumb_clusters, args.output_path)
     if 'link' in args.output_type:
         copy_file_as_cluster(clusters,
                              args.output_path,
-                             operator = utils.create_relative_symlink,
-                             )
+                             operator = utils.create_relative_symlink)
 
 
 if __name__ == "__main__":

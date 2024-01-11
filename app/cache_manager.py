@@ -20,12 +20,11 @@ class CacheManager:
 
     def __init__(self,
                  generate_func: Callable[[Hashable], Cachable],
-                 cache_tag: str = 'cache',
                  target_path: Path = '',
                  cache_root_path: Path = '',
                  cache_folder_name: str = '',
                  cache_key_type: str = 'path', # 'path' or 'hashable'
-                 format_str: str = "{base}_{ext}_{cache_tag}_{file_hash}.jpg"):
+                 format_str: str = "{base}_{ext}_{file_hash}.jpg"):
 
         assert target_path or (cache_root_path and cache_folder_name), \
             'Either target path or (cache root path and cache folder name) should be provided'
@@ -34,7 +33,6 @@ class CacheManager:
             "cache_key_type should be within 'path' and 'hashable'."
 
 
-        self.cache_tag = cache_tag
         self.generate_func = generate_func
         self.format_str = format_str
 
@@ -55,13 +53,13 @@ class CacheManager:
 
     def _get_cache_file_path_from_hashable(self, hashable_obj):
         basename = utils.stable_hash(hashable_obj)
-        basepath = self.format_str.format(base=basename, ext=self.cache_tag, cache_tag=self.cache_tag, file_hash=basename)
+        basepath = self.format_str.format(base=basename, ext='hashable', file_hash=basename)
         cache_p = utils.MyPath(os.path.join(self.cache_folder, basepath))
         return cache_p.abspath
 
     def _get_cache_file_path_from_path(self, path):
         p = utils.MyPath(path)
-        basename = self.format_str.format(base=p.basename, ext=p.extension, cache_tag=self.cache_tag, file_hash=p.hash)
+        basename = self.format_str.format(base=p.basename, ext=p.extension, file_hash=p.hash)
         cache_p = utils.MyPath(os.path.join(self.cache_folder, basename))
         return cache_p.abspath
 

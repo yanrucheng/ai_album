@@ -13,7 +13,14 @@ RUN pip install --no-cache-dir -r requirements-lock.txt
 
 # Run download_resource.py during the image build
 # Check if model_dev_cache exists and move it to /root/.cache if it does
-COPY ./model_cache /root/.cache
+COPY ./model_cache/similarity_image /root/.cache
+COPY ./model_cache/caption /root/.cache
+COPY ./model_cache/text_match /root/.cache
+
+# Update package lists and install FFmpeg
+RUN apt-get update \
+    && apt-get install -y ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy the rest of the current directory contents into the container
 # Copy app code at last because this is the most likely to be changed
@@ -21,7 +28,9 @@ COPY ./app .
 
 # this will download all LLM models to the image if not exist
 # this will ensure all the functionality works
-RUN python ./app.py ./samples/samples -o ./samples/test
+RUN python ./app.py ./samples/xxs_test -o default 
+RUN python ./app.py ./samples/xxs_test -o default -ot original
+RUN ls -al ./samples
 
 # CMD to run your main application script
 # CMD ["python", "/usr/src/app/app.py"]

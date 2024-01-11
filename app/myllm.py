@@ -1,16 +1,14 @@
-# from similarities import utils
-# from similarities import ClipSimilarity
 from utils import Singleton
 from PIL import Image
 from lavis.models import load_model_and_preprocess
 import torch
 from nudenet import NudeDetector
 
-class SimilarityCalculator(Singleton):
+class SimilarityCalculatorABC(Singleton):
     def __init__(self):
         super().__init__()
         self.model = None
-        
+
     def _load(self):
         pass
 
@@ -22,20 +20,20 @@ class SimilarityCalculator(Singleton):
         from similarities import utils
         return utils.util.cos_sim(*args, **kw)
 
-class ImageSimilarityCalculator(SimilarityCalculator):
+class ImageSimilarityCalculator(SimilarityCalculatorABC):
     def __init__(self):
         super().__init__()
-        
+
     def _load(self):
         from similarities import ClipSimilarity
         model_name = 'OFA-Sys/chinese-clip-vit-huge-patch14'
         print('Loading ', model_name)
         self.model = ClipSimilarity(model_name_or_path=model_name)
 
-class TextSimilarityCalculator(SimilarityCalculator):
+class TextSimilarityCalculator(SimilarityCalculatorABC):
     def __init__(self):
         super().__init__()
-        
+
     def _load(self):
         from similarities import BertSimilarity
         model_name = 'shibing624/text2vec-base-chinese'
@@ -62,7 +60,7 @@ class LavisModel:
 class VQA(Singleton, LavisModel):
     def __init__(self):
         super().__init__()
-        
+
     def _load(self):
         model_name = "blip_vqa"
         print('Loading ', model_name)
@@ -72,25 +70,25 @@ class VQA(Singleton, LavisModel):
 
     def ask(self, img, question):
         if self.model is None: self._load()
-            
+
         image = self._get_img(img)
         question = self._get_txt(question)
-        samples = {"image": image, "text_input": question} 
+        samples = {"image": image, "text_input": question}
         return self.model.predict_answers(samples, inference_method="generate")[0]
-        
+
     def rank(self, img, question, options):
         if self.model is None: self._load()
-           
+
         image = self._get_img(img)
         question = self._get_txt(question)
-        samples = {"image": image, "text_input": question} 
+        samples = {"image": image, "text_input": question}
         return self.model.predict_answers(samples, answer_list=options, inference_method="rank")[0]
 
 
 class ImageTextMatcher(Singleton, LavisModel):
     def __init__(self):
         super().__init__()
-        
+
     def _load(self):
         model_name = 'blip2_image_text_matching'
         print('Loading ', model_name)
@@ -100,7 +98,7 @@ class ImageTextMatcher(Singleton, LavisModel):
 
     def text_match(self, img, txt):
         if self.model is None: self._load()
-            
+
         image = self._get_img(img)
         txt = self._get_txt(txt)
         itm_output = self.model({"image": image, "text_input": txt}, match_head="itm")
@@ -110,7 +108,7 @@ class ImageTextMatcher(Singleton, LavisModel):
 class ImageCaptioner(Singleton, LavisModel):
     def __init__(self):
         super().__init__()
-        
+
     def _load(self):
         model_name = 'blip_caption'
         print('Loading ', model_name)
@@ -120,7 +118,7 @@ class ImageCaptioner(Singleton, LavisModel):
 
     def caption(self, img, **kw):
         if self.model is None: self._load()
-        
+
         image = self._get_img(img)
         return self.model.generate({"image": image}, **kw)
 
@@ -146,7 +144,7 @@ class NudeTagger:
         "FEMALE_BREAST_COVERED":       '胸隐现',
         "BUTTOCKS_COVERED":            '臀隐现',
     }
-    
+
     def __init__(self):
         self.nude_detector = NudeDetector()
 
@@ -165,7 +163,7 @@ class NudeTagger:
             for lbl, score in res.items()
         }
         return marked_res
-            
+
 
 
 

@@ -20,13 +20,11 @@ class VideoManager:
         self.model_name = model_name.replace('/', '_')
         self.similarity_model = ImageSimilarityCalculator()
         self.frame_cache_manager = CacheManager(target_path=folder_path,
-                                                cache_tag="frames",
                                                 generate_func=self._extract_and_cache_frames,
-                                                format_str='{base}_{file_hash}/{base}_thumbnail_*.jpg')
+                                                format_str='{base}_{file_hash}_raw/{base}_thumbnail_*.jpg')
         self.emb_cache_manager   = CacheManager(target_path=folder_path,
-                                                cache_tag="emb",
                                                 generate_func=self._generate_embeddings,
-                                                format_str='{base}_{file_hash}/{base}_emb_*.npy')
+                                                format_str='{base}_{file_hash}_raw/{base}_emb_*.npy')
 
     def extract_key_frame(self, path, top_k=TOP_K_KEY_FRAME_SELECTION):
 

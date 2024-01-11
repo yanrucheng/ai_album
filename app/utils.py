@@ -1,6 +1,7 @@
 import os
 import shutil
 import hashlib
+import functools
 from functools import lru_cache
 from datetime import datetime
 from collections import Counter
@@ -105,6 +106,25 @@ def partial_file_hash(path, chunk_size=4096):
 
 
 # Path related
+
+# a decorator
+def ensure_unique_path(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        original_path = func(*args, **kwargs)
+        if not original_path:
+            return None
+
+        # Ensure the path is unique by appending a number if it already exists
+        base, extension = os.path.splitext(original_path)
+        counter = 1
+        unique_path = original_path
+        while os.path.exists(unique_path):
+            unique_path = f"{base}-{counter}{extension}"
+            counter += 1
+
+        return unique_path
+    return wrapper
 
 class MyPath:
 
