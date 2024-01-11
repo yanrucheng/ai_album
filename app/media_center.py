@@ -190,7 +190,7 @@ class MediaCenter:
     def copy_with_meta_rotate(self, src, dst):
         assert src in self.media_fps, f'src={src} provided are not maintained by MediaCenter (not in self.media_fps). Maybe it is a thumbnail?'
         clockwise_degrees = self._get_media_rotation_clockwise_degree(src)
-        MediaCenter.copy_with_meta_rotate(src, dst, clockwise_degrees)
+        MediaManager.copy_with_meta_rotate(src, dst, clockwise_degrees)
 
 
 
