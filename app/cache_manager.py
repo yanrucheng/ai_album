@@ -51,6 +51,10 @@ class CacheManager:
     def to_cache_path(self, key_obj):
         return self._to_cache_path_func(key_obj)
 
+    def clear(self, key_obj):
+        f = self.to_cache_path(key_obj)
+        os.remove(f)
+
     def _get_cache_file_path_from_hashable(self, hashable_obj):
         basename = utils.stable_hash(hashable_obj)
         basepath = self.format_str.format(base=basename, ext='hashable', file_hash=basename)

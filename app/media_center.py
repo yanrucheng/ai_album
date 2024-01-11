@@ -18,6 +18,9 @@ from my_cluster import Cluster
 
 from functools import lru_cache
 
+from collections import namedtuple
+CacheStates = namedtuple('CacheStates', ['raw', 'rotate', 'thumb', 'caption', 'nude'])
+
 CAPTION_MIN_LENGTH = 10
 CAPTION_MAX_LENGTH = 30
 
@@ -27,6 +30,8 @@ class MediaCenter:
                  batch_size=8,
                  show_progress_bar=True,
                  check_rotation=True,
+                 check_nude=True,
+                 cache_flags=CacheStates(True,True,True,True,True),
                  **kwargs):
         print("Initializing ImageSimilarity...")
 
@@ -35,6 +40,8 @@ class MediaCenter:
         self.show_progress_bar = show_progress_bar
         self.kwargs = kwargs  # Store any additional keyword arguments
         self.check_rotation = check_rotation
+        self.check_nude = check_nude
+        self.cache_flags = cache_flags
 
         self.folder_path = folder_path
         self.media_fps = MediaManager.get_all_valid_media(folder_path)
@@ -47,29 +54,38 @@ class MediaCenter:
         self.nt = NudeTagger()
 
         # Initialize cache managers
+        ## level 1: raw material
         self.raw_thumbnail_cache_manager = CacheManager(target_path=folder_path,
                                                     generate_func=self._compute_raw_thumbnail,
                                                     format_str="{base}_raw_thumbnail_{file_hash}.jpg")
         self.raw_embedding_cache_manager = CacheManager(target_path=folder_path,
                                                     generate_func=self._generate_raw_embedding,
                                                     format_str="{base}_raw_emb_{file_hash}.npy")
-        self.thumbnail_cache_manager     = CacheManager(target_path=folder_path,
-                                                    generate_func=self._compute_thumbnail,
-                                                    format_str="{base}_thumbnail_{file_hash}.jpg")
-        self.embedding_cache_manager     = CacheManager(target_path=folder_path,
-                                                    generate_func=self._generate_embedding,
-                                                    format_str="{base}_emb_{file_hash}.npy")
 
-        self.nude_tag_cache_manager     = CacheManager(target_path=folder_path,
-                                                    generate_func=self._generate_nude_tag,
-                                                    format_str="{base}_nude_{file_hash}.yml")
+        ## level 2: rotation detect
         self.rotation_tag_cache_manager = CacheManager(target_path=folder_path,
                                                     generate_func=self._generate_rotation_tag,
                                                     format_str="{base}_rotation_{file_hash}.yml")
 
+        ## level 3: thumbnail material
+        self.thumbnail_cache_manager = CacheManager(target_path=folder_path,
+                                                    generate_func=self._compute_thumbnail,
+                                                    format_str="{base}_thumbnail_{file_hash}.jpg")
+        self.embedding_cache_manager = CacheManager(target_path=folder_path,
+                                                    generate_func=self._generate_embedding,
+                                                    format_str="{base}_emb_{file_hash}.npy")
+
+        ## level 4a: nude detection
+        self.nude_tag_cache_manager  = CacheManager(target_path=folder_path,
+                                                    generate_func=self._generate_nude_tag,
+                                                    format_str="{base}_nude_{file_hash}.yml")
+
+        ## level 4b: caption detection
         self.caption_cache_manager   = CacheManager(target_path=folder_path,
                                                     generate_func=self._generate_caption,
                                                     format_str="{base}_caption_{file_hash}.txt")
+
+        self._invalidate_cache()
 
 
         # Initialize similarity cluster
@@ -85,6 +101,21 @@ class MediaCenter:
     @property
     def media_size():
         return len(self.media_fps)
+
+    def _invalidate_cache(self):
+        for f in self.media_fps:
+            if not self.cache_flags.raw:
+                self.raw_embedding_cache_manager.clear(f)
+                self.raw_thumbnail_cache_manager.clear(f)
+            if not self.cache_flags.rotate:
+                self.rotation_tag_cache_manager.clear(f)
+            if not self.cache_flags.thumb:
+                self.embedding_cache_manager.clear(f)
+                self.thumbnail_cache_manager.clear(f)
+            if not self.cache_flags.caption:
+                self.caption_cache_manager.clear(f)
+            if not self.cache_flags.nude:
+                self.nude_tag_cache_manager.clear(f)
 
     def _compute_raw_thumbnail(self, image_path):
         def compute_thumbnail(path):
@@ -108,18 +139,18 @@ class MediaCenter:
         return rotated_img
 
     def _get_media_rotation_clockwise_degree(self, image_path):
-        if not self.check_rotation:
-            return 0
-
-        clockwise_degrees = self.rotation_tag_cache_manager.load(image_path).get('rotate', 0)
-        return clockwise_degrees
+        if not self.check_rotation: return 0
+        return self.rotation_tag_cache_manager.load(image_path).get('rotate', 0)
 
     def _generate_nude_tag(self, image_path):
-        # add nude tags
         # bad implementation but no choice because of 3rd party implementation
         thumb_path = self.thumbnail_cache_manager.to_cache_path(image_path)
         nude_tags = self.nt.detect(thumb_path)
         return nude_tags
+
+    def _get_nude_tag(self, image_path):
+        if not self.check_nude: return {}
+        return self.nude_tag_cache_manager.load(image_path)
 
     def _generate_rotation_tag(self, image_path):
         img = self.raw_thumbnail_cache_manager.load(image_path)
@@ -138,7 +169,7 @@ class MediaCenter:
     def compute_all_tags(self):
         print("Initializing tags...")
         for fp in tqdm(self.media_fps, desc="Initializing tags"):
-            _ = self.nude_tag_cache_manager.load(fp)
+            _ = self._get_nude_tag(fp)
             if self.check_rotation:
                 _ = self.rotation_tag_cache_manager.load(fp)
 
@@ -170,7 +201,7 @@ class MediaCenter:
             lbls = set(
                 tag_d['msg']
                 for f in file_paths
-                for tag_d in self.nude_tag_cache_manager.load(f).values()
+                for tag_d in self._get_nude_tag(f).values()
                 if tag_d['sensitive'])
             if len(lbls) <= 0:
                 return ''
