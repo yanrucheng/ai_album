@@ -154,11 +154,11 @@ class MyPath:
         try:
             stat = os.stat(self.path)
             # order of birthtime, create time, modification time
-            timestamps = [stat.st_birthtime, stat.st_ctime, stat.st_mtime]
-            # Get the first non-null timestamp
-
-            target_date_str = next((datetime.fromtimestamp(ts).strftime('%y%m%d')
-                                    for ts in timestamps if ts is not None), None)
+            target_date_str = next(
+                (datetime.fromtimestamp(ts).strftime('%y%m%d')
+                 for ts in [getattr(stat, 'st_birthtime', None),stat.st_ctime, stat.st_mtime] if ts is not None),
+                None
+            )
             return target_date_str
 
         except OSError as error:
