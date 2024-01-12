@@ -156,6 +156,7 @@ class HierarchicalCluster:
         else:
             result_clusters = {0: self.data}
 
+
         named_clusters = self._cluster_naming(result_clusters)
         return named_clusters
 
@@ -197,7 +198,12 @@ class HierarchicalCluster:
 
         def rename_to_captions(d):
             if isinstance(d, dict):
-                return {generate_folder_name(key): rename_to_captions(value) for key, value in d.items()}
+                res = {}
+                for key, value in d.items():
+                    caption = generate_folder_name(key)
+                    caption = utils.get_unique_key(caption, res)
+                    res[caption] = rename_to_captions(value)
+                return res
             return d
 
         processed_for_similarity, _ = process_dict_for_similarity(clusters)

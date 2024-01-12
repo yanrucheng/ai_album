@@ -152,23 +152,15 @@ class MyPath:
     @property
     def date(self):
         try:
-            # Get creation time (on Windows) or the last metadata change (on Unix)
-            creation_time = os.path.getctime(self.path)
+            stat = os.stat(self.path)
+            # order of birthtime, create time, modification time
+            timestamps = [stat.st_birthtime, stat.st_ctime, stat.st_mtime]
+            # Get the first non-null timestamp
 
-            # Get last modification time
-            modification_time = os.path.getmtime(self.path)
+            target_date_str = next((datetime.fromtimestamp(ts).strftime('%y%m%d')
+                                    for ts in timestamps if ts is not None), None)
+            return target_date_str
 
-            # Format times or set to None if they're not available
-            creation_date = datetime.fromtimestamp(creation_time).strftime('%y%m%d') if creation_time else None
-            modification_date = datetime.fromtimestamp(modification_time).strftime('%y%m%d') if modification_time else None
-
-            # Determine which date to use
-            if creation_date:
-                return creation_date
-            elif modification_date:
-                return modification_date
-            else:
-                return None
         except OSError as error:
             print(f"Error getting dates for {self.path}: {error}")
             return None
@@ -209,6 +201,21 @@ def create_relative_symlink(target_path: PathType, link_folder: PathType):
     os.symlink(rel_path, link_path)
 
 
+def safe_delete(file_path):
+    # Check if the file exists to avoid FileNotFoundError
+    if not os.path.isfile(file_path):
+        return
+
+    try:
+        os.remove(file_path)
+    except PermissionError as e:
+        # Raise PermissionError to be handled by the caller
+        raise PermissionError(f"Permission denied: {e}")
+    except Exception as e:
+        # Handle other possible exceptions
+        print(f"An error occurred: {e}")
+
+
 # Example usage
 # create_relative_symlink('/path/to/target', '/path/to/link_folder')
 
@@ -244,3 +251,26 @@ class Singleton(metaclass=SingletonMeta):
     def __init__(self):
         super().__init__()
 
+
+# collections related
+# key generation
+
+def get_unique_key(key, d):
+    """
+    Generate a unique key for a dictionary by appending a numeric suffix.
+
+    Args:
+    key (str): The original key.
+    d (dict): The dictionary in which the key needs to be unique.
+
+    Returns:
+    str: A unique key.
+    """
+    if key not in d:
+        return key
+
+    i = 1
+    while f"{key}-{i}" in d:
+        i += 1
+
+    return f"{key}-{i}"

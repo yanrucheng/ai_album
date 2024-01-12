@@ -53,7 +53,7 @@ class CacheManager:
 
     def clear(self, key_obj):
         f = self.to_cache_path(key_obj)
-        os.remove(f)
+        utils.safe_delete(f)
 
     def _get_cache_file_path_from_hashable(self, hashable_obj):
         basename = utils.stable_hash(hashable_obj)
