@@ -6,10 +6,10 @@ WORKDIR /usr/src/app
 
 # Copy only the requirements file into the container
 # for better docker caching
-COPY ./app/requirements-lock.txt .
+COPY ./app/requirements-docker-lock.txt .
 
 # Install any needed packages specified in requirements-lock.txt
-RUN pip install --no-cache-dir -r requirements-lock.txt
+RUN pip install --no-cache-dir -r requirements-docker-lock.txt
 
 # Update package lists and install FFmpeg
 RUN apt-get update \

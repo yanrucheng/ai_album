@@ -1,4 +1,6 @@
-torch==2.1.2
+-f https://download.pytorch.org/whl/torch_stable.html
+torch==2.1.2+cpu
+torchvision==0.16.2+cpu
 Pillow==10.1.0
 pillow-heif==0.14.0
 salesforce-lavis==1.0.2
