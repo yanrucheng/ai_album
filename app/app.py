@@ -67,7 +67,8 @@ Examples:
 
     args = parser.parse_args()
     if len(args.folder_paths) > 1:
-        print('Multiple input folder are provided. -o/--output-path are ignored. default output folders in use.')
+        if args.output_path:
+            print('Multiple input folders are provided. -o/--output-path is ignored. output folders will be infered.')
         args.output_path = ''
 
     cache_flags_str = args.cache_flags
