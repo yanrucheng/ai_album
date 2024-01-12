@@ -1,6 +1,7 @@
 from PIL import Image
 from myllm import VQA, ImageTextMatcher
 from typing import Dict, Callable
+from media_manager import MediaManager
 
 sex_poses = [ # accuracy low warning
     'kissing',
@@ -46,12 +47,12 @@ class MediaQuestionare:
         self.vqa = VQA()
         self.matcher = ImageTextMatcher()
 
-    def is_rotated(self, img):
+    def is_rotated_old(self, img):
         descriptions = {
-            0: 'the photo is taken in its standard orientation without any rotation',
-            90: 'the photo is rotated 90 degrees clockwise from its standard orientation',
-            180: 'the photo is taken in an upside-down orientation',
-            270: 'the photo is rotated 90 degrees counterclockwise from its standard orientation'
+            0: 'no rotation, standard orient',
+            90: 'photo rotated 90° to right',
+            180: 'this photo is upside-down',
+            270: 'photo rotated 90° to left',
         }
 
         # Evaluate the confidence for each rotation
@@ -70,6 +71,31 @@ class MediaQuestionare:
         }
 
         return result
+
+    def is_rotated(self, img):
+        '''This is sigificantly more accurate than is_rotated_old.
+        Because text-matcher handles 'up-side down' most accurately.
+        This function rotate the image and keep asking whether is upside-down.
+        '''
+        confidences = {}
+        for a in (0, 90, 180, 270):
+            img_ = MediaManager.rotate_image(img, a)
+            conf = self.matcher.text_match(img_, 'this photo is upside-down')
+            confidences[(180 - a) % 360] = conf
+
+        # Find the rotation with the highest confidence
+        highest_confidence_angle = max(confidences.keys(), key=confidences.get)
+        highest_confidence = max(confidences.values()) / sum(confidences.values())
+        result = {
+            'rotate_0': confidences[0],
+            'rotate_90': confidences[90],
+            'rotate_180': confidences[180],
+            'rotate_270': confidences[270],
+            'rotate': highest_confidence_angle,
+            'rotate_confidence': highest_confidence,
+        }
+        return result
+
 
     def is_selfie(self, img):
         '''When confidence > 0.25. Could be marked as selfie.'''

@@ -16,6 +16,7 @@ class MediaManager(utils.Singleton):
     def __init__(self):
         super().__init__()
 
+    @staticmethod
     def rotate_image(img: Image.Image, clockwise_degree: int = 0):
         if clockwise_degree == 0:
             return img
