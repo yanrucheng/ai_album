@@ -185,20 +185,15 @@ def create_relative_symlink(target_path: PathType, link_folder: PathType):
     target_path = Path(target_path).resolve()
     link_folder = Path(link_folder).resolve()
 
-    # Ensure link_folder exists
     link_folder.mkdir(parents=True, exist_ok=True)
-
-    # Extract the name from target_path to use as the link name
     link_name = target_path.name
-
-    # Calculate the relative path from link_folder to target_path
     rel_path = os.path.relpath(target_path, link_folder)
-
-    # Path for the symbolic link
     link_path = link_folder / link_name
 
-    # Create a symbolic link
-    os.symlink(rel_path, link_path)
+    try:
+        os.symlink(rel_path, link_path)
+    except Exception as e:
+        print(f"Fail to build symlink at {str(rel_path)} for {str(target_path)}. Details: {e}")
 
 
 def safe_delete(file_path):
