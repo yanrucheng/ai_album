@@ -27,9 +27,9 @@ def parse_arguments():
 
     parser.add_argument('-o', '--output-path', type=validate_output_folder, default='',
                         help="Output path to copy files as clusters (default: ''). "
-                        "Could be path, print, default (<input_dir>_clustered), or ''")
+                        "Could be a path or '' (infered as <input_dir>_clustered)")
     parser.add_argument('-ot', '--output-type', nargs='+',
-                        choices=['thumbnail', 'original', 'link'],
+                        choices=['thumbnail', 'original', 'link', 'print'],
                         default=['thumbnail', 'link'],
                         help='Output types can be (one/multiple of)thumbnail, original, or link')
 
@@ -61,7 +61,7 @@ Examples:
 
 
     args = parser.parse_args()
-    if args.output_path == 'default':
+    if args.output_path == '':
         args.output_path = to_default_output_path(args.folder_path)
 
     cache_flags_str = args.cache_flags
@@ -87,8 +87,8 @@ def to_default_output_path(in_path):
     return in_path.rstrip('/').rstrip('\\') + '_clustered'
 
 def validate_output_folder(path):
-    if path in ('', 'print', 'default'):
-        return path
+    if path == '':
+        return ''
     # Check if it's a simple directory name or a valid path structure
     if os.path.basename(path) and (not os.path.exists(path) or os.path.isdir(path)):
         return path
@@ -121,9 +121,8 @@ def main():
     # Clustering images with specified distance levels
     clusters = s.cluster(*args.distance_levels)
 
-    if args.output_path == 'print':
+    if 'print' in args.output_type:
         pprint.pprint(clusters)
-        return
 
     if 'original' in args.output_type:
         copy_file_as_cluster(clusters,
