@@ -6,11 +6,16 @@ import os
 import utils
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description='AI-Album, an LLM-based AI auto media grouper')
+    parser = argparse.ArgumentParser(description='AI-Album, an LLM-based AI auto media grouper. \
+                                    This tool allows you to group media files in specified folders \
+                                    using AI algorithms.')
 
     # Add arguments
-    parser.add_argument('folder_path', type=str,
-                        help='Path to the folder containing images')
+    parser.add_argument('folder_paths', type=str, nargs='+',
+                        help='Provide one or more paths to folders containing images. \
+                            Each path should be separated by a space. \
+                            Example: path/to/folder1 path/to/folder2')
+
     parser.add_argument('-b', '--batch-size', type=int, default=16,
                         help='Batch size for processing images (default: 16)')
     parser.add_argument('-sp', '--show-progress', action='store_true',
@@ -28,7 +33,7 @@ def parse_arguments():
     parser.add_argument('-o', '--output-path', type=validate_output_folder, default='',
                         help="Output path to copy files as clusters (default: ''). "
                         "Could be a path or '' (infered as <input_dir>_clustered)")
-    parser.add_argument('-ot', '--output-type', nargs='+',
+    parser.add_argument('-ot', '--output-type', nargs='*',
                         choices=['thumbnail', 'original', 'link', 'print'],
                         default=['thumbnail', 'link'],
                         help='Output types can be (one/multiple of)thumbnail, original, or link')
@@ -61,8 +66,9 @@ Examples:
 
 
     args = parser.parse_args()
-    if args.output_path == '':
-        args.output_path = to_default_output_path(args.folder_path)
+    if len(args.folder_paths) > 1:
+        print('Multiple input folder are provided. -o/--output-path are ignored. default output folders in use.')
+        args.output_path = ''
 
     cache_flags_str = args.cache_flags
     args.cache_flags = CacheStates(
@@ -81,11 +87,6 @@ def validate_cache_arg(cache_flags_str):
         raise argparse.ArgumentTypeError(f"Cache flag must be a binary string of length 5, e.g., '10101'. got: {cache_flags_str}")
     return cache_flags_str
 
-
-@utils.ensure_unique_path
-def to_default_output_path(in_path):
-    return in_path.rstrip('/').rstrip('\\') + '_clustered'
-
 def validate_output_folder(path):
     if path == '':
         return ''
@@ -97,11 +98,13 @@ def validate_output_folder(path):
                                          "or'print' or '' or 'default'")
 
 
-def main():
-    args = parse_arguments()
+@utils.ensure_unique_path
+def to_default_output_path(in_path):
+    return in_path.rstrip('/').rstrip('\\') + '-clustered'
 
+def app(in_folder, args):
     # Usage
-    s = MediaCenter(args.folder_path,
+    s = MediaCenter(in_folder,
                     batch_size = args.batch_size,
                     check_rotation = not args.disable_rotation,
                     check_nude = not args.disable_explicity_detection,
@@ -115,26 +118,35 @@ def main():
     # Compute all tags
     s.compute_all_tags()
 
-    if not args.output_path:
-        return
-
     # Clustering images with specified distance levels
     clusters = s.cluster(*args.distance_levels)
+
+    output_path = args.output_path
+    if output_path == '':
+        output_path = to_default_output_path(in_folder)
 
     if 'print' in args.output_type:
         pprint.pprint(clusters)
 
     if 'original' in args.output_type:
         copy_file_as_cluster(clusters,
-                             args.output_path,
+                             output_path,
                              operator = s.copy_with_meta_rotate)
+
     if 'thumbnail' in args.output_type:
         thumb_clusters = s.cluster_to_thumbnail(clusters)
-        copy_file_as_cluster(thumb_clusters, args.output_path)
+        copy_file_as_cluster(thumb_clusters, output_path)
+
     if 'link' in args.output_type:
         copy_file_as_cluster(clusters,
-                             args.output_path,
+                             output_path,
                              operator = utils.create_relative_symlink)
+
+
+def main():
+    args = parse_arguments()
+    for f in args.folder_paths:
+        app(f, args)
 
 
 if __name__ == "__main__":
