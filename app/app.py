@@ -2,7 +2,7 @@ import argparse
 from media_center import MediaCenter, CacheStates
 from my_cluster import copy_file_as_cluster
 import pprint
-import os
+import os, glob
 import utils
 import textwrap
 
@@ -70,6 +70,10 @@ def parse_arguments():
 
 
     args = parser.parse_args()
+
+    # handles wildcard expansion
+    args.folder_paths = [x for p in args.folder_paths for x in glob.glob(p) ]
+
     if len(args.folder_paths) > 1:
         if args.output_path:
             print('Multiple input folders are provided. -o/--output-path is ignored. output folders will be infered.')
