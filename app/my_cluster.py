@@ -7,13 +7,14 @@ import utils
 Cluster = Dict[str, 'Cluster'] # recursive typing
 
 Path = str
-def copy_file_as_cluster(clusters: Cluster,
+def copy_file_as_cluster(cluster: Cluster,
                          target_path: Path,
                          operator: Callable[[str], str] = utils.copy_with_meta,
                          ):
 
-    def _copy_files_to_clusters(clusters, target_path, _current_path=""):
-        for cluster_id, contents in clusters.items():
+    def _copy_files_to_clusters(cluster, target_path, _current_path=""):
+
+        for cluster_id, contents in cluster.items():
             # Create a new subdirectory for the current cluster
             cluster_dir = os.path.join(target_path, _current_path, str(cluster_id))
             os.makedirs(cluster_dir, exist_ok=True)
@@ -26,40 +27,34 @@ def copy_file_as_cluster(clusters: Cluster,
                 for file_path in contents:
                     operator(file_path, cluster_dir)
 
-    _copy_files_to_clusters(clusters=clusters, target_path=target_path)
+    _copy_files_to_clusters(cluster=cluster, target_path=target_path)
 
 
 class ClusterLeafProcessor:
-    def __init__(self,
-                 obj_to_obj: Callable[[Any], Any] = None,
+
+    @classmethod
+    def process(cls, cluster,
+                obj_to_obj: Callable[[Any], Any] = None,
                 ):
         if obj_to_obj is None:
             obj_to_obj = lambda x: x
-        self.obj_to_obj = obj_to_obj
 
-    def process_cluster(self, clusters):
-        if isinstance(clusters, dict):
-            return {k:self.process_cluster(v) for k,v in clusters.items()}
-        elif isinstance(clusters, list):
-            return [self.obj_to_obj(x) for x in clusters]
+        if isinstance(cluster, dict):
+            return {k: cls.process(v, obj_to_obj) for k,v in cluster.items()}
+        elif isinstance(cluster, list):
+            return [obj_to_obj(x) for x in cluster]
         else:
-            pass
+            return None
 
 
 class ClusterKeyProcessor:
-    def __init__(self,
-                 objs_to_cluster_prefix: Callable[[List[Any]], str] = None
-                ):
+    @staticmethod
+    def name(cluster: Cluster,
+             objs_to_cluster_key_formatter: Callable[[List[Any]], str] = None,
+             ) -> Cluster:
 
-        if objs_to_cluster_prefix is None:
-            objs_to_cluster_prefix = lambda _: ''
-        self.objs_to_cluster_prefix = objs_to_cluster_prefix
-
-    def name_cluster(self, clusters):
-        marked_clusters = self._cluster_marking(clusters)
-        return marked_clusters
-
-    def _cluster_marking(self, nested_dict):
+        if objs_to_cluster_key_formatter is None:
+            objs_to_cluster_key_formatter = lambda _: '{key}'
 
         def recurse(d):
             if isinstance(d, dict):
@@ -67,8 +62,8 @@ class ClusterKeyProcessor:
                 res = set()
                 for key, value in d.items():
                     d_, res_ = recurse(value)
-                    prefix = self.objs_to_cluster_prefix(res_)
-                    new_key = prefix + key
+                    fstr = objs_to_cluster_key_formatter(res_)
+                    new_key = fstr.format(key=key)
                     res = res.union(res_)
                     new_dict[new_key] = d_
                 return new_dict, res
@@ -76,96 +71,83 @@ class ClusterKeyProcessor:
                 # For leaf nodes (list of file paths), just return them
                 return d, set(d)
 
-        d, _ = recurse(nested_dict)
+        d, _ = recurse(cluster)
         return d
 
 
 class HierarchicalCluster:
 
     def __init__(self,
-                 data: List[Any],
                  embedding_func: List[Any],
                  similarity_func: Callable[[Any, Any], float],
                  obj_to_name: Callable[[Any], str] = None,
                 ):
-        self.data = data
         self.emb_func = embedding_func
         self.sim_func = similarity_func
 
         if obj_to_name is None:
-            obj_to_name = lambda x: x if isinstance(x, str) else 'default_caption'
+            obj_to_name = lambda x: x if isinstance(x, str) else 'default'
         self.obj_to_name = obj_to_name
 
-    @property
-    def media_size(self) -> int:
-        return len(self.data)
-
-    def cluster(self, distance_levels=None) -> Cluster:
+    def cluster(self, cluster: Cluster, distance_levels=None) -> Cluster:
         """
         Cluster embeddings in a multi-level hierarchy using a list of distance thresholds.
 
         :param embeddings: The embeddings to cluster.
         :param distance_levels: A list of distance thresholds for each level of clustering.
-        :return: Nested dictionary representing multi-level hierarchical clusters.
+        :return: Nested dictionary representing multi-level hierarchical cluster.
         """
-        if self.media_size <= 0:
-            return {}
-
-        embeddings = [*map(self.emb_func, self.data)]
-
         if distance_levels is None:
             distance_levels = [2, 0.5]  # Default value
 
-        # Pair each embedding with its corresponding file path
-        paired_data = list(zip(self.data, embeddings))
-
-        # Starting with all paired data as the initial cluster
-        initial_cluster = {0: paired_data}
+        initial_cluster = ClusterLeafProcessor.process(
+                cluster, obj_to_obj = lambda f: (f, self.emb_func(f)))
 
         # Function to recursively apply clustering
-        def recursive_clustering(current_clusters, level):
+        def recursive_clustering(current_clusters, level = 0):
             if level >= len(distance_levels):
                 # At the final level, return the file paths instead of (file path, embedding) pairs
-                return {cluster_id: [fp for fp, _ in cluster_data] for cluster_id, cluster_data in current_clusters.items()}
+                return {cluster_id: [fp for fp, _ in cluster_data]
+                        for cluster_id, cluster_data in current_clusters.items()}
 
-            new_clusters = {}
+            new_c = {}
             for cluster_id, cluster_data in current_clusters.items():
                 if len(cluster_data) > 1:
-                    # Extract embeddings for clustering
                     cluster_embeddings = [emb for _, emb in cluster_data]
-                    clustering = AgglomerativeClustering(distance_threshold=distance_levels[level], n_clusters=None)
+                    clustering = AgglomerativeClustering(
+                            distance_threshold=distance_levels[level],
+                            n_clusters=None)
                     clustering.fit(cluster_embeddings)
 
-                    sub_clusters = {}
+                    sub_c = {}
                     for idx, label in enumerate(clustering.labels_):
-                        sub_clusters.setdefault(label, []).append(cluster_data[idx])
+                        sub_c.setdefault(label, []).append(cluster_data[idx])
 
-                    new_clusters[cluster_id] = recursive_clustering(sub_clusters, level + 1)
+                    new_c[cluster_id] = recursive_clustering(sub_c, level + 1)
                 elif len(cluster_data) == 1:
                     # If only one item in cluster, no need for further clustering
                     fp, _ = cluster_data[0]
-                    new_clusters[cluster_id] = [fp]
+                    new_c[cluster_id] = [fp]
                 else:
                     pass
 
-            return new_clusters
+            return new_c
 
         # Apply recursive clustering starting from level 0
-        if self.media_size >= 2:
-            result_clusters = recursive_clustering(initial_cluster, 0)[0]
-        else:
-            result_clusters = {0: self.data}
+        res_cluster = recursive_clustering(initial_cluster)
+        pruned_cluster = self.prune(res_cluster)
+        named_cluster = self.name(pruned_cluster)
+        return named_cluster
 
+    @classmethod
+    def prune(cls, cluster: Cluster) -> Cluster:
+        if isinstance(cluster, list):
+            return cluster[:]
+        if len(cluster) == 1 and isinstance(res := next(iter(cluster.values())), dict):
+            return cls.prune(res)
+        return {k: cls.prune(v) for k,v in cluster.items()}
 
-        named_clusters = self._cluster_naming(result_clusters)
-        return named_clusters
-
-    def _cluster_naming(self, clusters):
-        def generate_folder_name(image_path):
-            caption = self.obj_to_name(image_path)
-            folder_name = '-'.join(x.title() for x in caption.split())
-            return folder_name
-
+    def name(self, cluster: Cluster) -> Cluster:
         def calculate_similarity(item1, item2):
             emb1 = self.emb_func(item1)
             emb2 = self.emb_func(item2)
@@ -200,11 +182,11 @@ class HierarchicalCluster:
             if isinstance(d, dict):
                 res = {}
                 for key, value in d.items():
-                    caption = generate_folder_name(key)
+                    caption = self.obj_to_name(key)
                     caption = utils.get_unique_key(caption, res)
                     res[caption] = rename_to_captions(value)
                 return res
             return d
 
-        processed_for_similarity, _ = process_dict_for_similarity(clusters)
+        processed_for_similarity, _ = process_dict_for_similarity(cluster)
         return rename_to_captions(processed_for_similarity)

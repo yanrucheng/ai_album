@@ -91,13 +91,10 @@ class MediaCenter:
 
 
         # Initialize similarity cluster
-        self.hcluster =   HierarchicalCluster(data = self.media_fps,
-                                              embedding_func = self.embedding_cache_manager.load,
-                                              similarity_func = self.similarity_model.similarity_func,
-                                              obj_to_name = self.caption_cache_manager.load)
-        self.ckp = ClusterKeyProcessor(objs_to_cluster_prefix = self._generate_cluster_folder_prefix)
-        self.clp = ClusterLeafProcessor(obj_to_obj = self.thumbnail_cache_manager.to_cache_path)
-
+        self.hcluster = HierarchicalCluster(
+                embedding_func = self.embedding_cache_manager.load,
+                similarity_func = self.similarity_model.similarity_func,
+                obj_to_name = self.path_to_folder_name)
         self._initialize()
 
     @property
@@ -200,14 +197,24 @@ class MediaCenter:
 
     @lru_cache(maxsize=64)
     def cluster(self, *distance_levels) -> Cluster:
-        c = self.hcluster.cluster(distance_levels)
-        c_named = self.ckp.name_cluster(c)
-        return c_named
+        c_named = self.hcluster.cluster( {0: self.media_fps}, distance_levels,)
+        c_named_formatted = ClusterKeyProcessor.name(c_named,
+                self._generate_cluster_name_formatter)
+        return c_named_formatted
+
+    def path_to_folder_name(self, image_path):
+        caption = self.caption_cache_manager.load(image_path)
+        caption = caption.lower().replace('a', '').replace(' ' * 2, ' ')
+        folder_name = '-'.join(x.title() for x in caption.split())
+        return folder_name
 
     def cluster_to_thumbnail(self, cluster):
-        return self.clp.process_cluster(cluster)
+        return ClusterLeafProcessor.process(
+            cluster,
+            self.thumbnail_cache_manager.to_cache_path,
+        )
 
-    def _generate_cluster_folder_prefix(self, file_paths):
+    def _generate_cluster_name_formatter(self, file_paths):
         def labels(file_paths):
             lbls = set(
                 tag_d['msg']
@@ -219,7 +226,7 @@ class MediaCenter:
             elif len(lbls) <= 3:
                 return f"[{'-'.join(sorted(lbls))}]"
             else:
-                return 'ITMC-'
+                return 'NSFW-'
 
         def date(file_paths):
             ds = [MyPath(f).date for f in file_paths]
@@ -227,7 +234,7 @@ class MediaCenter:
 
         label = labels(file_paths)
         date = date(file_paths)
-        return label + date + '-'
+        return label + date + '-{key}'
 
     def copy_with_meta_rotate(self, src, dst):
         assert src in self.media_fps, f'src={src} provided are not maintained by MediaCenter (not in self.media_fps). Maybe it is a thumbnail?'

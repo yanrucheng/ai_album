@@ -156,7 +156,7 @@ class MyPath:
             # order of birthtime, create time, modification time
             target_date_str = next(
                 (datetime.fromtimestamp(ts).strftime('%y%m%d')
-                 for ts in [getattr(stat, 'st_birthtime', None),stat.st_ctime, stat.st_mtime] if ts is not None),
+                 for ts in [getattr(stat, 'st_birthtime', None), stat.st_ctime, stat.st_mtime] if ts is not None),
                 None
             )
             return target_date_str
