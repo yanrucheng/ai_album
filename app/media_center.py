@@ -18,6 +18,8 @@ from my_cluster import Cluster
 
 from functools import lru_cache
 
+from function_tracker import global_tracker
+
 from collections import namedtuple
 CacheStates = namedtuple('CacheStates', ['raw', 'rotate', 'thumb', 'caption', 'nude'])
 
@@ -117,6 +119,7 @@ class MediaCenter:
             if not self.cache_flags.nude:
                 self.nude_tag_cache_manager.clear(f)
 
+    @global_tracker
     def _compute_raw_thumbnail(self, image_path):
         def compute_thumbnail(path):
             if MediaManager.is_image(path):
@@ -132,26 +135,31 @@ class MediaCenter:
 
         return compute_thumbnail(image_path)
 
+    @global_tracker
     def _compute_thumbnail(self, image_path):
         raw_img = self.raw_thumbnail_cache_manager.load(image_path)
         clockwise_degrees = self._get_media_rotation_clockwise_degree(image_path)
         rotated_img = MediaManager.rotate_image(raw_img, -clockwise_degrees)
         return rotated_img
 
+    @global_tracker
     def _get_media_rotation_clockwise_degree(self, image_path):
         if not self.check_rotation: return 0
         return self.rotation_tag_cache_manager.load(image_path).get('rotate', 0)
 
+    @global_tracker
     def _generate_nude_tag(self, image_path):
         # bad implementation but no choice because of 3rd party implementation
         thumb_path = self.thumbnail_cache_manager.to_cache_path(image_path)
         nude_tags = self.nt.detect(thumb_path)
         return nude_tags
 
+    @global_tracker
     def _get_nude_tag(self, image_path):
         if not self.check_nude: return {}
         return self.nude_tag_cache_manager.load(image_path)
 
+    @global_tracker
     def _generate_rotation_tag(self, image_path):
         img = self.raw_thumbnail_cache_manager.load(image_path)
         return self.mq.is_rotated(img)
@@ -173,16 +181,19 @@ class MediaCenter:
             if self.check_rotation:
                 _ = self.rotation_tag_cache_manager.load(fp)
 
+    @global_tracker
     def _generate_raw_embedding(self, image_path):
         img = self.raw_thumbnail_cache_manager.load(image_path)
         emb = self.similarity_model.get_embeddings([img])[0]  # Extract the first (and only) embedding
         return emb
 
+    @global_tracker
     def _generate_embedding(self, image_path):
         img = self.thumbnail_cache_manager.load(image_path)
         emb = self.similarity_model.get_embeddings([img])[0]  # Extract the first (and only) embedding
         return emb
 
+    @global_tracker
     def _generate_caption(self, image_path):
         img = self.thumbnail_cache_manager.load(image_path)
         return self.cp.caption(img, max_length=CAPTION_MAX_LENGTH, min_length=CAPTION_MIN_LENGTH)[0]

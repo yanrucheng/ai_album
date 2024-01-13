@@ -5,6 +5,7 @@ import pprint
 import os, glob
 import utils
 import textwrap
+from function_tracker import global_tracker
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description=textwrap.dedent('''\
@@ -40,6 +41,9 @@ def parse_arguments():
                         choices=['thumbnail', 'original', 'link', 'print'],
                         default=['thumbnail', 'link'],
                         help='Output types can be (one/multiple of)thumbnail, original, or link')
+
+    parser.add_argument('--debug', action='store_true',
+                        help='Enable function tracking timer')
 
     parser.add_argument("-cf", "--cache-flags", type=validate_cache_arg, default = '11111',
                         help=textwrap.dedent('''\
@@ -103,6 +107,7 @@ def parse_arguments():
         Output Path: {'Default' if args.output_path == '' else args.output_path}
         Output Types: {args.output_type}
         Cache Flags: {args.cache_flags}
+        Debug Mode: {'Yes' if args.debug else 'No'}
         """))
 
 
@@ -171,8 +176,15 @@ def app(in_folder, args):
 
 def main():
     args = parse_arguments()
+
+    if args.debug:
+        global_tracker.enable()
+
     for f in args.folder_paths:
         app(f, args)
+
+    if args.debug:
+        global_tracker.report()
 
 
 if __name__ == "__main__":
