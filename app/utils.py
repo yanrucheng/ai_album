@@ -149,21 +149,47 @@ class MyPath:
     def hash(self):
         return partial_file_hash(self.path)
 
+
     @property
-    def date(self):
+    def timestamp(self):
         try:
             stat = os.stat(self.path)
             # order of birthtime, create time, modification time
-            target_date_str = next(
-                (datetime.fromtimestamp(ts).strftime('%y%m%d')
+            target_ts = next(
+                (ts
                  for ts in [getattr(stat, 'st_birthtime', None), stat.st_ctime, stat.st_mtime] if ts is not None),
                 None
             )
-            return target_date_str
+            return target_ts
 
         except OSError as error:
             print(f"Error getting dates for {self.path}: {error}")
             return None
+
+    @property
+    def date(self):
+        return datetime.fromtimestamp(self.timestamp).strftime('%y%m%d')
+
+    @property
+    def time_of_a_day(self):
+        """
+        Return a human-readable time of day for a given timestamp.
+        """
+        timestamp = datetime.fromtimestamp(self.timestamp)
+        hour = timestamp.hour
+
+        if 5 <= hour < 12:
+            return 'Morning'
+        elif hour == 12:
+            return 'Noon'
+        elif 12 < hour < 17:
+            return 'Afternoon'
+        elif 17 <= hour < 21:
+            return 'Evening'
+        elif 21 <= hour < 24:
+            return 'Night'
+        else:  # from midnight to 5 am
+            return 'Midnight'
 
 # OS related
 

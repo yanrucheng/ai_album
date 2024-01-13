@@ -22,9 +22,9 @@ def parse_arguments():
                             Each path should be separated by a space.
                             Example: path/to/folder1 path/to/folder2'''))
 
-    parser.add_argument('-b', '--batch-size', type=int, default=16,
+    parser.add_argument('--batch-size', type=int, default=16,
                         help='Batch size for processing images (default: 16)')
-    parser.add_argument('-sp', '--show-progress', action='store_true',
+    parser.add_argument('--disable-progress', action='store_true',
                         help='Show progress bar during processing')
 
     parser.add_argument('-dr', '--disable-rotation', action='store_true',
@@ -107,9 +107,9 @@ def parse_arguments():
     pprint.pprint(args.folder_paths)  # Pretty print for folder paths
     print(textwrap.dedent(f"""
         Batch Size: {args.batch_size}
-        Show Progress: {'Yes' if args.show_progress else 'No'}
-        Disable Rotation: {'Yes' if args.disable_rotation else 'No'}
-        Disable Explicit Detection: {'Yes' if args.disable_explicity_detection else 'No'}
+        Show Progress Bar: {'No' if args.disable_progress else 'Yes'}
+        Check Media Rotation: {'Off' if args.disable_rotation else 'On'}
+        Check Explicit Detection: {'Off' if args.disable_explicity_detection else 'On'}
         Distance Levels: {args.distance_levels}
         Output Path: {'Default' if args.output_path == '' else args.output_path}
         Output Types: {args.output_type}

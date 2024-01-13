@@ -16,9 +16,9 @@ def format_filename(file_path):
     return (file_name[:27] + '...') if len(file_name) > 30 else file_name
 
 class VideoManager:
-    def __init__(self, folder_path, model_name=''):
+    def __init__(self, folder_path, show_progress_bar=True):
         self.folder_path = folder_path
-        self.model_name = model_name.replace('/', '_')
+        self.show_progress_bar = show_progress_bar
         self.similarity_model = ImageSimilarityCalculator()
         self.frame_cache_manager = CacheManager(target_path=folder_path,
                                                 generate_func=self._extract_and_cache_frames,
@@ -69,7 +69,7 @@ class VideoManager:
         frames = self.extract_frames(video_path)
         if len(frames) <= 0:
             return []
-        batch_embeddings = self.similarity_model.get_embeddings(frames, show_progress_bar=True, batch_size=8)
+        batch_embeddings = self.similarity_model.get_embeddings(frames, show_progress_bar=self.show_progress_bar, batch_size=8)
         return batch_embeddings
 
     @global_tracker

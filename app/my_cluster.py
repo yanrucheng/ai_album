@@ -2,6 +2,7 @@ from typing import List, Dict, Callable, Any
 from sklearn.cluster import AgglomerativeClustering
 from utils import MyPath
 import os
+import numpy as np
 import utils
 
 Cluster = Dict[str, 'Cluster'] # recursive typing
@@ -78,7 +79,7 @@ class ClusterKeyProcessor:
 class HierarchicalCluster:
 
     def __init__(self,
-                 embedding_func: List[Any],
+                 embedding_func: Callable[[Any], np.ndarray],
                  similarity_func: Callable[[Any, Any], float],
                  obj_to_name: Callable[[Any], str] = None,
                 ):
@@ -111,9 +112,17 @@ class HierarchicalCluster:
                         for cluster_id, cluster_data in current_clusters.items()}
 
             new_c = {}
-            for cluster_id, cluster_data in current_clusters.items():
-                if len(cluster_data) > 1:
-                    cluster_embeddings = [emb for _, emb in cluster_data]
+            for cluster_id, children in current_clusters.items():
+                if isinstance(children, dict):
+                    new_c[cluster_id] = recursice_clustering(children, level)
+                    continue
+
+                if not isinstance(children, list):
+                    continue
+
+                # children must be a list now
+                if len(children) > 1:
+                    cluster_embeddings = [emb for _, emb in children]
                     clustering = AgglomerativeClustering(
                             distance_threshold=distance_levels[level],
                             n_clusters=None)
@@ -121,12 +130,12 @@ class HierarchicalCluster:
 
                     sub_c = {}
                     for idx, label in enumerate(clustering.labels_):
-                        sub_c.setdefault(label, []).append(cluster_data[idx])
+                        sub_c.setdefault(label, []).append(children[idx])
 
                     new_c[cluster_id] = recursive_clustering(sub_c, level + 1)
-                elif len(cluster_data) == 1:
+                elif len(children) == 1:
                     # If only one item in cluster, no need for further clustering
-                    fp, _ = cluster_data[0]
+                    fp, _ = children[0]
                     new_c[cluster_id] = [fp]
                 else:
                     pass
@@ -167,8 +176,7 @@ class HierarchicalCluster:
 
             if isinstance(d, dict):
                 new_dict = {}
-                representations = list(d.keys()) + [img for sublist in d.values() if isinstance(sublist, list) for img in sublist]
-                for _, value in d.items():
+                for key, value in d.items():
                     processed_value, best = process_dict_for_similarity(value)
                     new_dict[best] = processed_value
 
@@ -182,9 +190,9 @@ class HierarchicalCluster:
             if isinstance(d, dict):
                 res = {}
                 for key, value in d.items():
-                    caption = self.obj_to_name(key)
-                    caption = utils.get_unique_key(caption, res)
-                    res[caption] = rename_to_captions(value)
+                    cluster_name = self.obj_to_name(key)
+                    cluster_name = utils.get_unique_key(cluster_name, res)
+                    res[cluster_name] = rename_to_captions(value)
                 return res
             return d
 

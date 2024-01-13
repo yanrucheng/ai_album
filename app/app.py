@@ -12,7 +12,7 @@ def app(in_folder, args):
                     batch_size = args.batch_size,
                     check_rotation = not args.disable_rotation,
                     check_nude = not args.disable_explicity_detection,
-                    show_progress_bar = args.show_progress,
+                    show_progress_bar = not args.disable_progress,
                     cache_flags = args.cache_flags,
                     )
 

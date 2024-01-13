@@ -47,7 +47,7 @@ class MediaCenter:
 
         self.folder_path = folder_path
         self.media_fps = MediaManager.get_all_valid_media(folder_path)
-        self.video_mng = VideoManager(folder_path)
+        self.video_mng = VideoManager(folder_path, show_progress_bar)
         self.cp = ImageCaptioner()
 
         self.mq = MediaQuestionare()
@@ -91,7 +91,11 @@ class MediaCenter:
 
 
         # Initialize similarity cluster
-        self.hcluster = HierarchicalCluster(
+        self.time_cluster = HierarchicalCluster(
+                embedding_func = lambda p: np.array([MyPath(p).timestamp]),
+                similarity_func = lambda a,b: abs(a - b),
+                obj_to_name = lambda p: MyPath(p).date + MyPath(p).time_of_a_day)
+        self.image_cluster = HierarchicalCluster(
                 embedding_func = self.embedding_cache_manager.load,
                 similarity_func = self.similarity_model.similarity_func,
                 obj_to_name = self.path_to_folder_name)
@@ -163,17 +167,17 @@ class MediaCenter:
 
     def _initialize(self):
         print("Initializing embeddings...")
-        for fp in tqdm(self.media_fps, desc="Initializing embeddings"):
+        for fp in tqdm(self.media_fps, desc="Initializing embeddings", disable=not self.show_progress_bar):
             _ = self.embedding_cache_manager.load(fp)
 
     def compute_all_captions(self):
         print("Initializing captions...")
-        for fp in tqdm(self.media_fps, desc="Initializing captions"):
+        for fp in tqdm(self.media_fps, desc="Initializing captions", disable=not self.show_progress_bar):
             _ = self.caption_cache_manager.load(fp)
 
     def compute_all_tags(self):
         print("Initializing tags...")
-        for fp in tqdm(self.media_fps, desc="Initializing tags"):
+        for fp in tqdm(self.media_fps, desc="Initializing tags", disable=not self.show_progress_bar):
             _ = self._get_nude_tag(fp)
             if self.check_rotation:
                 _ = self.rotation_tag_cache_manager.load(fp)
@@ -197,7 +201,14 @@ class MediaCenter:
 
     @lru_cache(maxsize=64)
     def cluster(self, *distance_levels) -> Cluster:
-        c_named = self.hcluster.cluster( {0: self.media_fps}, distance_levels,)
+
+        # use time to cluster
+        # distance_levels = [] means if 1 photos are taken
+        # longer than 1 minutes = 60 seconds. they are not in a group
+        c_time = self.time_cluster.cluster( {0: self.media_fps}, [60])
+
+        # use image content to clsuter
+        c_named = self.image_cluster.cluster( c_time, distance_levels,)
         c_named_formatted = ClusterKeyProcessor.name(c_named,
                 self._generate_cluster_name_formatter)
         return c_named_formatted
