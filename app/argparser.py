@@ -3,6 +3,11 @@ import textwrap
 import os, glob
 import pprint
 import argparse
+import utils
+
+@utils.ensure_unique_path
+def to_default_output_path(in_path):
+    return in_path.rstrip('/').rstrip('\\') + '-clustered'
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description=textwrap.dedent('''\
@@ -73,7 +78,12 @@ def parse_arguments():
     args = parser.parse_args()
 
     # handles wildcard expansion
-    args.folder_paths = [x for p in args.folder_paths for x in glob.glob(p) ]
+    args.folder_paths = [
+        p
+        for path_pattern in args.folder_paths
+        for p in glob.glob(path_pattern)
+        if '-clustered' not in p
+    ]
 
     if len(args.folder_paths) > 1:
         if args.output_path:

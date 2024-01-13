@@ -3,12 +3,8 @@ from my_cluster import copy_file_as_cluster
 import pprint
 import utils
 from function_tracker import global_tracker
-from argparser import parse_arguments
+from argparser import parse_arguments, to_default_output_path
 
-
-@utils.ensure_unique_path
-def to_default_output_path(in_path):
-    return in_path.rstrip('/').rstrip('\\') + '-clustered'
 
 def app(in_folder, args):
     # Usage
