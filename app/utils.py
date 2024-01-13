@@ -11,6 +11,9 @@ from pathlib import Path
 import sys
 import contextlib
 
+import json
+import re
+
 
 # Print related
 
@@ -295,3 +298,18 @@ def get_unique_key(key, d):
         i += 1
 
     return f"{key}-{i}"
+
+# String 
+
+def replace_ing_words(text, filename='verb.json'):
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    json_path = os.path.join(dir_path, filename)
+    """ Replace '-ing' words in the text with their original form using the verb dictionary. """
+    with open(json_path, 'r') as file:
+        verb_dict = json.load(file)
+
+    return re.sub(r'\b(\w+ing)\b', lambda match: verb_dict.get(match.group(0), match.group(0)), text)
+
+def remove_quantifier(text):
+    return re.sub(r'\b(a|an|some|is|are)\b', '', text)
+

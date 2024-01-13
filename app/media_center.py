@@ -19,6 +19,7 @@ from my_cluster import Cluster
 from functools import lru_cache
 
 from function_tracker import global_tracker
+import utils
 
 from collections import namedtuple
 CacheStates = namedtuple('CacheStates', ['raw', 'rotate', 'thumb', 'caption', 'nude'])
@@ -204,8 +205,8 @@ class MediaCenter:
 
         # use time to cluster
         # distance_levels = [] means if 1 photos are taken
-        # longer than 1 minutes = 60 seconds. they are not in a group
-        c_time = self.time_cluster.cluster( {0: self.media_fps}, [60])
+        # longer than 20 min = 1200 seconds. they are not in a group
+        c_time = self.time_cluster.cluster( {0: self.media_fps}, [1200])
 
         # use image content to clsuter
         c_named = self.image_cluster.cluster( c_time, distance_levels,)
@@ -213,9 +214,14 @@ class MediaCenter:
                 self._generate_cluster_name_formatter)
         return c_named_formatted
 
+
     def path_to_folder_name(self, image_path):
         caption = self.caption_cache_manager.load(image_path)
-        caption = caption.lower().replace('a', '').replace(' ' * 2, ' ')
+        caption = caption.lower().replace(' ' * 2, ' ')
+        caption = caption.replace(' and ', ' & ')
+        caption = caption.replace('group of ', '').replace('couple of ', '').replace('pair of ', '')
+        caption = utils.remove_quantifier(caption)
+        caption = utils.replace_ing_words(caption)
         folder_name = '-'.join(x.title() for x in caption.split())
         return folder_name
 
