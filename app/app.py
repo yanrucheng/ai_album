@@ -4,17 +4,20 @@ from my_cluster import copy_file_as_cluster
 import pprint
 import os
 import utils
+import textwrap
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description='AI-Album, an LLM-based AI auto media grouper. \
-                                    This tool allows you to group media files in specified folders \
-                                    using AI algorithms.')
+    parser = argparse.ArgumentParser(description=textwrap.dedent('''\
+                                    AI-Album, an LLM-based AI auto media grouper.
+                                    This tool allows you to group media files in specified folders using AI algorithms.'''),
+                                    formatter_class=argparse.RawTextHelpFormatter)
 
     # Add arguments
     parser.add_argument('folder_paths', type=str, nargs='+',
-                        help='Provide one or more paths to folders containing images. \
-                            Each path should be separated by a space. \
-                            Example: path/to/folder1 path/to/folder2')
+                        help=textwrap.dedent('''\
+                            Provide one or more paths to folders containing images.
+                            Each path should be separated by a space.
+                            Example: path/to/folder1 path/to/folder2'''))
 
     parser.add_argument('-b', '--batch-size', type=int, default=16,
                         help='Batch size for processing images (default: 16)')
@@ -39,30 +42,31 @@ def parse_arguments():
                         help='Output types can be (one/multiple of)thumbnail, original, or link')
 
     parser.add_argument("-cf", "--cache-flags", type=validate_cache_arg, default = '11111',
-                        help='''
-Control cache settings using a binary string. Each digit represents a cache (A, B, C, D, E) in order.
+                        help=textwrap.dedent('''\
+                            Control cache settings using a binary string. Each digit represents a cache (A, B, C, D, E) in order.
 
-Pipeline structure:
-A -> B -> C -> D
-         \
-          -> E
+                            Pipeline structure:
+                            A -> B -> C -> D
+                                \
+                                -> E
 
-where: - A: raw media material cache
- - B: media rotation detection cache
- - C: thumbnail cache
- - D: caption cache
- - E: nude detection tag cache
+                            where:
+                            - A: raw media material cache
+                            - B: media rotation detection cache
+                            - C: thumbnail cache
+                            - D: caption cache
+                            - E: nude detection tag cache
 
-'1' turns a cache on, and '0' turns it off.
-Turning off a cache also turns off all subsequent caches in the pipeline (A off -> B, C, D off).
-However, E is independent; turning off C does not affect E.
+                            '1' turns a cache on, and '0' turns it off.
+                            Turning off a cache also turns off all subsequent caches in the pipeline (A off -> B, C, D off).
+                            However, E is independent; turning off C does not affect E.
 
-Examples:
-- '00000' turns all cache off
-- '01000' works as '11000' becuase cache of B mask the unexistance of A
-- '10101' turns caches A, C, and E on. B and D are off.
-- '01010' actually works as '11010' due to pipeline dependencies.
-- '11101' remains as it is since D and E are independent.  ''')
+                            Examples:
+                            - '00000' turns all cache off
+                            - '01000' works as '11000' because the cache of B masks the nonexistence of A
+                            - '10101' turns caches A, C, and E on. B and D are off.
+                            - '01010' actually works as '11010' due to pipeline dependencies.
+                            - '11101' remains as it is since D and E are independent.'''))
 
 
     args = parser.parse_args()
@@ -71,17 +75,34 @@ Examples:
             print('Multiple input folders are provided. -o/--output-path is ignored. output folders will be infered.')
         args.output_path = ''
 
-    cache_flags_str = args.cache_flags
+    cs = args.cache_flags
     args.cache_flags = CacheStates(
-        raw=cache_flags_str[0] == '1',
-        rotate=cache_flags_str[1] == '1',
-        thumb=cache_flags_str[2] == '1',
-        caption=cache_flags_str[3] == '1',
-        nude=cache_flags_str[4] == '1'
+        raw = cs[0] == '1',
+        rotate = cs[1] == '1',
+        thumb = cs[2] == '1',
+        caption = cs[3] == '1',
+        nude = cs[4] == '1'
     )
 
-    return args
+    # Print a summary of the inputs using textwrap for better formatting
+    print(textwrap.dedent("""
+        User Input Summary:
+        Folder Paths:
+        """))
+    pprint.pprint(args.folder_paths)  # Pretty print for folder paths
+    print(textwrap.dedent(f"""
+        Batch Size: {args.batch_size}
+        Show Progress: {'Yes' if args.show_progress else 'No'}
+        Disable Rotation: {'Yes' if args.disable_rotation else 'No'}
+        Disable Explicit Detection: {'Yes' if args.disable_explicity_detection else 'No'}
+        Distance Levels: {args.distance_levels}
+        Output Path: {'Default' if args.output_path == '' else args.output_path}
+        Output Types: {args.output_type}
+        Cache Flags: {args.cache_flags}
+        """))
 
+
+    return args
 
 def validate_cache_arg(cache_flags_str):
     if len(cache_flags_str) != 5 or not all(char in '01' for char in cache_flags_str):
