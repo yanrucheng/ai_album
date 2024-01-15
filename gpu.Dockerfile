@@ -38,4 +38,4 @@ ENV TZ=Asia/Shanghai
 COPY ./app .
 
 # CMD to run your main application script
-ENTRYPOINT ["python", "/usr/src/app/app.py"]
+ENTRYPOINT ["python3", "/usr/src/app/app.py"]

@@ -1,0 +1,5 @@
+GPU usage:
+docker run --rm --gpus all -v llm_cache:/root/.cache -v ${PWD}:/tmp -w /tmp chengyanru/ai-album:gpu0.1 ./path-to-target
+
+GPU uage
+docker run --rm -v llm_cache:/root/.cache -v ${PWD}:/tmp -w /tmp chengyanru/ai-album:v1.8.2 ./path-to-target
