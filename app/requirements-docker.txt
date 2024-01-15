@@ -1,4 +1,6 @@
 -f https://download.pytorch.org/whl/torch_stable.html
+accelerate==0.26.1
+bitsandbytes==0.42.0
 torch==2.1.2+cpu
 torchvision==0.16.2+cpu
 Pillow==10.1.0
