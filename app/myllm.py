@@ -58,7 +58,7 @@ class LavisModel:
         return self.txt_processors['eval'](s)
 
 
-class VQA(Singleton, LavisModel):
+class VQA_Old(Singleton, LavisModel):
     def __init__(self):
         super().__init__()
 
@@ -105,6 +105,37 @@ class ImageTextMatcher(Singleton, LavisModel):
         itm_output = self.model({"image": image, "text_input": txt}, match_head="itm")
         itm_scores = torch.nn.functional.softmax(itm_output, dim=1)
         return itm_scores[:, 1].item()
+
+class VQA(Singleton):
+    def __init__(self):
+        super().__init__()
+
+    def _load(self):
+        from uform.gen_model import VLMForCausalLM, VLMProcessor
+
+        model_name = "unum-cloud/uform-gen-chat"
+        print('Loading ', model_name)
+        self.model = VLMForCausalLM.from_pretrained(mode_name)
+        self.processor = VLMProcessor.from_pretrained(model_name)
+
+    def ask(self, img, question="What do you see?", **kw):
+        if self.model is None: self._load()
+
+        inputs = processor(texts=[question], images=[img], return_tensors="pt")
+        with torch.inference_mode():
+            output = model.generate(
+                **inputs,
+                do_sample=False,
+                use_cache=True,
+                max_new_tokens=128,
+                eos_token_id=32001,
+                pad_token_id=processor.tokenizer.pad_token_id
+            )
+
+        prompt_len = inputs["input_ids"].shape[1]
+        decoded_text = processor.batch_decode(output[:, prompt_len:])[0]
+        return decoded_text
+
 
 class ImageCaptioner(Singleton, LavisModel):
     def __init__(self):
