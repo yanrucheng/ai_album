@@ -152,6 +152,9 @@ class MyPath:
     def hash(self):
         return partial_file_hash(self.path)
 
+    @property
+    def timezone(self):
+        return pytz.timezone('Asia/Shanghai')
 
     @property
     def timestamp(self):
@@ -171,14 +174,18 @@ class MyPath:
 
     @property
     def date(self):
-        return datetime.fromtimestamp(self.timestamp).strftime('%y%m%d')
+        if self.timestamp is None:
+            return None
+        return datetime.fromtimestamp(self.timestamp, self.timezone).strftime('%y%m%d')
 
     @property
     def time_of_a_day(self):
         """
         Return a human-readable time of day for a given timestamp.
         """
-        timestamp = datetime.fromtimestamp(self.timestamp)
+        if self.timestamp is None:
+            return None
+        timestamp = datetime.fromtimestamp(self.timestamp, self.timezone)
         hour = timestamp.hour
 
         if 5 <= hour < 12:
