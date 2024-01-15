@@ -1,6 +1,13 @@
 # Start from the NVIDIA CUDA base image
 FROM nvidia/cuda:11.1.1-cudnn8-devel-ubuntu20.04
 
+# Avoid prompts from apt.
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Preconfigure tzdata
+RUN echo 'tzdata tzdata/Areas select Asia' | debconf-set-selections \
+    && echo 'tzdata tzdata/Zones/Asia select Shanghai' | debconf-set-selections
+
 # Install Python 3.8, pip, tzdata, ffmpeg in one step and clean up
 RUN apt-get update && apt-get install -y \
     python3.8 \
@@ -24,11 +31,8 @@ COPY ./app/requirements-docker-gpu-lock.txt .
 # Install any needed packages specified in requirements-docker-gpu.txt
 RUN pip install --no-cache-dir -r requirements-docker-gpu-lock.txt
 
-# Set the timezone to Shanghai
+# Set the timezone
 ENV TZ=Asia/Shanghai
-RUN echo "Asia/Shanghai" > /etc/timezone \
-    && ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
-    && dpkg-reconfigure --frontend noninteractive tzdata
 
 # Copy the rest of the current directory contents into the container
 COPY ./app .

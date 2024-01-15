@@ -1,0 +1,13 @@
+version: '3'
+services:
+  app-cpu:
+    build:
+      context: .
+      dockerfile: cpu.Dockerfile
+    image: chengyanru/ai-album:v1.8.2
+
+  app-gpu:
+    build:
+      context: .
+      dockerfile: gpu.Dockerfile
+    image: chengyanru/ai-album:gpu0.1
