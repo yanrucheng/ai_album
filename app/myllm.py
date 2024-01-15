@@ -1,6 +1,7 @@
 from utils import Singleton
 from PIL import Image
 from lavis.models import load_model_and_preprocess
+
 import torch
 from nudenet import NudeDetector
 
@@ -121,6 +122,41 @@ class ImageCaptioner(Singleton, LavisModel):
 
         image = self._get_img(img)
         return self.model.generate({"image": image}, **kw)
+
+class ImageCaptionerChinese(Singleton):
+    def __init__(self):
+        super().__init__()
+        self.captioner = ImageCaptioner()
+        self.translator = MyTranslator()
+
+    def caption(self, img, **kw):
+        res_eng = self.captioner.caption(img, **kw)
+        res_ch = self.translator.translate(res_eng)
+        return res_ch
+
+class MyTranslator(Singleton):
+    def __init__(self):
+        super().__init__()
+        self.translation = None
+        
+    def _load(self):
+        from transformers import AutoModelWithLMHead,AutoTokenizer,pipeline
+        
+        mode_name = 'liam168/trans-opus-mt-en-zh'
+        model = AutoModelWithLMHead.from_pretrained(mode_name)
+        tokenizer = AutoTokenizer.from_pretrained(mode_name)
+        self.translation = pipeline("translation_en_to_zh", model=model, tokenizer=tokenizer)
+
+    def translate(self, s_eng, max_length=400):
+        if self.translation is None: self._load()
+        
+        res_d = self.translation(s_eng, max_length=max_length)
+        if len(res_d) < 1 or 'translation_text' not in res_d[0]:
+            print(f'Translation Failed for: {s_eng}. Got: {str(res_d)}')
+            return ''
+        return res_d[0]['translation_text']
+
+
 
 class NudeTagger:
 

@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from cache_manager import CacheManager
 from video_manager import VideoManager
-from myllm import ImageSimilarityCalculator, ImageCaptioner, NudeTagger, VQA, ImageTextMatcher
+import myllm
 from media_questionare import MediaQuestionare
 from utils import MyPath, get_mode
 from media_manager import MediaManager
@@ -27,6 +27,8 @@ CacheStates = namedtuple('CacheStates', ['raw', 'rotate', 'thumb', 'caption', 'n
 CAPTION_MIN_LENGTH = 10
 CAPTION_MAX_LENGTH = 30
 
+LANGUAGE_OPTIONS = ['en', 'ch'] # en for english, ch for chinese
+
 class MediaCenter:
     def __init__(self,
                  folder_path,
@@ -35,26 +37,31 @@ class MediaCenter:
                  check_rotation=True,
                  check_nude=True,
                  cache_flags=CacheStates(True,True,True,True,True),
+                 language='ch',
                  **kwargs):
         print("Initializing ImageSimilarity...")
 
-        self.similarity_model = ImageSimilarityCalculator()
+        self.similarity_model = myllm.ImageSimilarityCalculator()
         self.batch_size = batch_size
         self.show_progress_bar = show_progress_bar
         self.kwargs = kwargs  # Store any additional keyword arguments
         self.check_rotation = check_rotation
         self.check_nude = check_nude
         self.cache_flags = cache_flags
+        self.language = language
+        assert language in LANGUAGE_OPTIONS, f'only {LANGUAGE_OPTIONS} are supported. got: {language}'
+
 
         self.folder_path = folder_path
         self.media_fps = MediaManager.get_all_valid_media(folder_path)
         self.video_mng = VideoManager(folder_path, show_progress_bar)
-        self.cp = ImageCaptioner()
+        self.cp = myllm.ImageCaptioner()
+        self.tl = myllm.MyTranslator()
 
         self.mq = MediaQuestionare()
-        self.mt = ImageTextMatcher()
+        self.mt = myllm.ImageTextMatcher()
 
-        self.nt = NudeTagger()
+        self.nt = myllm.NudeTagger()
 
         # Initialize cache managers
         ## level 1: raw material
@@ -84,9 +91,12 @@ class MediaCenter:
                                                     format_str="{base}_nude_{file_hash}.yml")
 
         ## level 4b: caption detection
-        self.caption_cache_manager   = CacheManager(target_path=folder_path,
-                                                    generate_func=self._generate_caption,
-                                                    format_str="{base}_caption_{file_hash}.txt")
+        self.caption_en_cache_manager   = CacheManager(target_path=folder_path,
+                                                    generate_func=self._generate_caption_en,
+                                                    format_str="{base}_caption_en_{file_hash}.txt")
+        self.caption_ch_cache_manager   = CacheManager(target_path=folder_path,
+                                                    generate_func=self._generate_caption_ch,
+                                                    format_str="{base}_caption_ch_{file_hash}.txt")
 
         self._invalidate_cache()
 
@@ -117,7 +127,8 @@ class MediaCenter:
                 self.embedding_cache_manager.clear(f)
                 self.thumbnail_cache_manager.clear(f)
             if not self.cache_flags.caption:
-                self.caption_cache_manager.clear(f)
+                self.caption_en_cache_manager.clear(f)
+                self.caption_ch_cache_manager.clear(f)
             if not self.cache_flags.nude:
                 self.nude_tag_cache_manager.clear(f)
 
@@ -174,7 +185,7 @@ class MediaCenter:
     def compute_all_captions(self):
         print("Initializing captions...")
         for fp in tqdm(self.media_fps, desc="Initializing captions", disable=not self.show_progress_bar):
-            _ = self.caption_cache_manager.load(fp)
+            _ = self._get_caption(fp)
 
     def compute_all_tags(self):
         print("Initializing tags...")
@@ -195,8 +206,21 @@ class MediaCenter:
         emb = self.similarity_model.get_embeddings([img])[0]  # Extract the first (and only) embedding
         return emb
 
+    def _get_caption(self, image_path):
+        if self.language == 'en':
+            return self.caption_en_cache_manager.load(image_path)
+        if self.language == 'ch':
+            return self.caption_ch_cache_manager.load(image_path)
+        return 'langauge not supported'
+
     @global_tracker
-    def _generate_caption(self, image_path):
+    def _generate_caption_ch(self, image_path):
+        caption_eng = self._generate_caption_en(image_path)
+        caption = self.tl.translate(caption_eng)
+        return caption
+
+    @global_tracker
+    def _generate_caption_en(self, image_path):
         img = self.thumbnail_cache_manager.load(image_path)
         return self.cp.caption(img, max_length=CAPTION_MAX_LENGTH, min_length=CAPTION_MIN_LENGTH)[0]
 
@@ -214,9 +238,8 @@ class MediaCenter:
                 self._generate_cluster_name_formatter)
         return c_named_formatted
 
-
     def path_to_folder_name(self, image_path):
-        caption = self.caption_cache_manager.load(image_path)
+        caption = self._get_caption(image_path)
         caption = caption.lower().replace(' ' * 2, ' ')
         caption = caption.replace(' and ', ' & ')
         caption = caption.replace('group of ', '').replace('couple of ', '').replace('pair of ', '')

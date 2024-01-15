@@ -44,6 +44,11 @@ def parse_arguments():
                         default=['thumbnail', 'link'],
                         help='Output types can be (one/multiple of)thumbnail, original, or link')
 
+    parser.add_argument('-lang', '--language',
+                        choices=['en', 'ch'],
+                        default='ch',
+                        help='Select the language for clustered folder names. (default: ch) (ch=chinese, en=english)')
+
     parser.add_argument('--debug', action='store_true',
                         help='Enable function tracking timer')
 

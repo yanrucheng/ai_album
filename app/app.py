@@ -14,6 +14,7 @@ def app(in_folder, args):
                     check_nude = not args.disable_explicity_detection,
                     show_progress_bar = not args.disable_progress,
                     cache_flags = args.cache_flags,
+                    language = args.language,
                     )
 
     # Compute all captions
