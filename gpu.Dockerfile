@@ -1,8 +1,14 @@
 # Start from the NVIDIA CUDA base image
 FROM nvidia/cuda:11.1.1-cudnn8-devel-ubuntu20.04
 
-# Install Python 3.8
-RUN apt-get update && apt-get install -y python3.8 python3-pip
+# Install Python 3.8, pip, tzdata, ffmpeg in one step and clean up
+RUN apt-get update && apt-get install -y \
+    python3.8 \
+    python3-pip \
+    tzdata \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Upgrade pip
 RUN python3.8 -m pip install --upgrade pip
@@ -13,20 +19,19 @@ RUN pip install torch torchvision torchaudio --extra-index-url https://download.
 # Set the working directory in the container
 WORKDIR /usr/src/app
 
-COPY ./app/requirements-docker-gpu.txt .
+COPY ./app/requirements-docker-gpu-lock.txt .
 
-# Install any needed packages specified in requirements-lock.txt
-RUN pip install --no-cache-dir -r requirements-docker-gpu.txt
+# Install any needed packages specified in requirements-docker-gpu.txt
+RUN pip install --no-cache-dir -r requirements-docker-gpu-lock.txt
 
-# Update package lists and install FFmpeg
-RUN apt-get update \
-    && apt-get install -y ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+# Set the timezone to Shanghai
+ENV TZ=Asia/Shanghai
+RUN echo "Asia/Shanghai" > /etc/timezone \
+    && ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && dpkg-reconfigure --frontend noninteractive tzdata
 
 # Copy the rest of the current directory contents into the container
-# Copy app code at last because this is the most likely to be changed
 COPY ./app .
 
 # CMD to run your main application script
-# CMD ["python", "/usr/src/app/app.py"]
 ENTRYPOINT ["python", "/usr/src/app/app.py"]
