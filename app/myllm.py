@@ -58,7 +58,7 @@ class LavisModel:
         return self.txt_processors['eval'](s)
 
 
-class VQA_Old(Singleton, LavisModel):
+class VQA(Singleton, LavisModel):
     def __init__(self):
         super().__init__()
 
@@ -106,7 +106,7 @@ class ImageTextMatcher(Singleton, LavisModel):
         itm_scores = torch.nn.functional.softmax(itm_output, dim=1)
         return itm_scores[:, 1].item()
 
-class VQA(Singleton):
+class VQA_uform(Singleton):
     def __init__(self):
         super().__init__()
 
