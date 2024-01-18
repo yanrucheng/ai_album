@@ -46,7 +46,7 @@ def parse_arguments():
 
     parser.add_argument('-lang', '--language',
                         choices=['en', 'ch'],
-                        default='ch',
+                        default='en',
                         help='Select the language for clustered folder names. (default: ch) (ch=chinese, en=english)')
 
     parser.add_argument('--debug', action='store_true',
