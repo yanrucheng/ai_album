@@ -58,33 +58,6 @@ class LavisModel:
         return self.txt_processors['eval'](s)
 
 
-class VQA(Singleton, LavisModel):
-    def __init__(self):
-        super().__init__()
-
-    def _load(self):
-        model_name = "blip_vqa"
-        print('Loading ', model_name)
-        self.model, self.vis_processors, self.txt_processors = load_model_and_preprocess(
-            name=model_name, model_type="aokvqa", is_eval=True, device=self.device
-        )
-
-    def ask(self, img, question):
-        if self.model is None: self._load()
-
-        image = self._get_img(img)
-        question = self._get_txt(question)
-        samples = {"image": image, "text_input": question}
-        return self.model.predict_answers(samples, inference_method="generate")[0]
-
-    def rank(self, img, question, options):
-        if self.model is None: self._load()
-
-        image = self._get_img(img)
-        question = self._get_txt(question)
-        samples = {"image": image, "text_input": question}
-        return self.model.predict_answers(samples, answer_list=options, inference_method="rank")[0]
-
 
 class ImageTextMatcher(Singleton, LavisModel):
     def __init__(self):
@@ -106,53 +79,29 @@ class ImageTextMatcher(Singleton, LavisModel):
         itm_scores = torch.nn.functional.softmax(itm_output, dim=1)
         return itm_scores[:, 1].item()
 
-class VQA_uform(Singleton):
+class ImageCaptioner(Singleton):
     def __init__(self):
         super().__init__()
 
     def _load(self):
-        from uform.gen_model import VLMForCausalLM, VLMProcessor
+        from transformers import BlipProcessor, BlipForConditionalGeneration
 
-        model_name = "unum-cloud/uform-gen-chat"
-        print('Loading ', model_name)
-        self.model = VLMForCausalLM.from_pretrained(mode_name)
-        self.processor = VLMProcessor.from_pretrained(model_name)
-
-    def ask(self, img, question="What do you see?", **kw):
-        if self.model is None: self._load()
-
-        inputs = processor(texts=[question], images=[img], return_tensors="pt")
-        with torch.inference_mode():
-            output = model.generate(
-                **inputs,
-                do_sample=False,
-                use_cache=True,
-                max_new_tokens=128,
-                eos_token_id=32001,
-                pad_token_id=processor.tokenizer.pad_token_id
-            )
-
-        prompt_len = inputs["input_ids"].shape[1]
-        decoded_text = processor.batch_decode(output[:, prompt_len:])[0]
-        return decoded_text
-
-
-class ImageCaptioner(Singleton, LavisModel):
-    def __init__(self):
-        super().__init__()
-
-    def _load(self):
-        model_name = 'blip_caption'
-        print('Loading ', model_name)
-        self.model, self.vis_processors, self.txt_processors = load_model_and_preprocess(
-            name=model_name, model_type='large_coco', is_eval=True, device=self.device
-        )
+        self.blip_large_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-large")
+        self.blip_large_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-large")
 
     def caption(self, img, **kw):
         if self.model is None: self._load()
 
-        image = self._get_img(img)
-        return self.model.generate({"image": image}, **kw)
+        raw_image = img.convert('RGB')
+
+        # conditional image captioning
+        tpl = "a photography of"
+        inputs = blip_large_processor(raw_image, tpl, return_tensors="pt")
+
+        out = blip_large_model.generate(**inputs)
+        res_full = blip_large_processor.decode(out[0], skip_special_tokens=True)
+        res = res_full[len(tpl):]
+        return res.strip()
 
 class ImageCaptionerChinese(Singleton):
     def __init__(self):
@@ -169,10 +118,10 @@ class MyTranslator(Singleton):
     def __init__(self):
         super().__init__()
         self.translation = None
-        
+
     def _load(self):
         from transformers import AutoModelWithLMHead,AutoTokenizer,pipeline
-        
+
         mode_name = 'liam168/trans-opus-mt-en-zh'
         model = AutoModelWithLMHead.from_pretrained(mode_name)
         tokenizer = AutoTokenizer.from_pretrained(mode_name)
@@ -180,7 +129,7 @@ class MyTranslator(Singleton):
 
     def translate(self, s_eng, max_length=400):
         if self.translation is None: self._load()
-        
+
         res_d = self.translation(s_eng, max_length=max_length)
         if len(res_d) < 1 or 'translation_text' not in res_d[0]:
             print(f'Translation Failed for: {s_eng}. Got: {str(res_d)}')
@@ -239,5 +188,82 @@ class NudeTagger:
 
 
 
+
+# the rest are unused models. please move them out when used
+# feel free to remove them when needed
+
+class ImageCaptionerBlipLargeCOCO_unused(Singleton, LavisModel):
+    def __init__(self):
+        super().__init__()
+
+    def _load(self):
+        model_name = 'blip_caption'
+        print('Loading ', model_name)
+        self.model, self.vis_processors, self.txt_processors = load_model_and_preprocess(
+            name=model_name, model_type='large_coco', is_eval=True, device=self.device
+        )
+
+    def caption(self, img, **kw):
+        if self.model is None: self._load()
+
+        image = self._get_img(img)
+        return self.model.generate({"image": image}, **kw)
+
+class VQA_unused(Singleton, LavisModel):
+    def __init__(self):
+        super().__init__()
+
+    def _load(self):
+        model_name = "blip_vqa"
+        print('Loading ', model_name)
+        self.model, self.vis_processors, self.txt_processors = load_model_and_preprocess(
+            name=model_name, model_type="aokvqa", is_eval=True, device=self.device
+        )
+
+    def ask(self, img, question):
+        if self.model is None: self._load()
+
+        image = self._get_img(img)
+        question = self._get_txt(question)
+        samples = {"image": image, "text_input": question}
+        return self.model.predict_answers(samples, inference_method="generate")[0]
+
+    def rank(self, img, question, options):
+        if self.model is None: self._load()
+
+        image = self._get_img(img)
+        question = self._get_txt(question)
+        samples = {"image": image, "text_input": question}
+        return self.model.predict_answers(samples, answer_list=options, inference_method="rank")[0]
+
+class VQA_uform_unused(Singleton):
+    def __init__(self):
+        super().__init__()
+
+    def _load(self):
+        from uform.gen_model import VLMForCausalLM, VLMProcessor
+
+        model_name = "unum-cloud/uform-gen-chat"
+        print('Loading ', model_name)
+        self.model = VLMForCausalLM.from_pretrained(mode_name)
+        self.processor = VLMProcessor.from_pretrained(model_name)
+
+    def ask(self, img, question="What do you see?", **kw):
+        if self.model is None: self._load()
+
+        inputs = processor(texts=[question], images=[img], return_tensors="pt")
+        with torch.inference_mode():
+            output = model.generate(
+                **inputs,
+                do_sample=False,
+                use_cache=True,
+                max_new_tokens=128,
+                eos_token_id=32001,
+                pad_token_id=processor.tokenizer.pad_token_id
+            )
+
+        prompt_len = inputs["input_ids"].shape[1]
+        decoded_text = processor.batch_decode(output[:, prompt_len:])[0]
+        return decoded_text
 
 

@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: cpu.Dockerfile
-    image: chengyanru/ai-album:v1.8.2
+    image: chengyanru/ai-album:v1.8.3
 
   app-gpu:
     build:
