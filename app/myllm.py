@@ -57,6 +57,32 @@ class LavisModel:
     def _get_txt(self, s):
         return self.txt_processors['eval'](s)
 
+class VQA(Singleton, LavisModel):
+    def __init__(self):
+        super().__init__()
+
+    def _load(self):
+        model_name = "blip_vqa"
+        print('Loading ', model_name)
+        self.model, self.vis_processors, self.txt_processors = load_model_and_preprocess(
+            name=model_name, model_type="aokvqa", is_eval=True, device=self.device
+        )
+
+    def ask(self, img, question):
+        if self.model is None: self._load()
+
+        image = self._get_img(img)
+        question = self._get_txt(question)
+        samples = {"image": image, "text_input": question}
+        return self.model.predict_answers(samples, inference_method="generate")[0]
+
+    def rank(self, img, question, options):
+        if self.model is None: self._load()
+
+        image = self._get_img(img)
+        question = self._get_txt(question)
+        samples = {"image": image, "text_input": question}
+        return self.model.predict_answers(samples, answer_list=options, inference_method="rank")[0]
 
 
 class ImageTextMatcher(Singleton, LavisModel):
@@ -209,32 +235,6 @@ class ImageCaptionerBlipLargeCOCO_unused(Singleton, LavisModel):
         image = self._get_img(img)
         return self.model.generate({"image": image}, **kw)
 
-class VQA_unused(Singleton, LavisModel):
-    def __init__(self):
-        super().__init__()
-
-    def _load(self):
-        model_name = "blip_vqa"
-        print('Loading ', model_name)
-        self.model, self.vis_processors, self.txt_processors = load_model_and_preprocess(
-            name=model_name, model_type="aokvqa", is_eval=True, device=self.device
-        )
-
-    def ask(self, img, question):
-        if self.model is None: self._load()
-
-        image = self._get_img(img)
-        question = self._get_txt(question)
-        samples = {"image": image, "text_input": question}
-        return self.model.predict_answers(samples, inference_method="generate")[0]
-
-    def rank(self, img, question, options):
-        if self.model is None: self._load()
-
-        image = self._get_img(img)
-        question = self._get_txt(question)
-        samples = {"image": image, "text_input": question}
-        return self.model.predict_answers(samples, answer_list=options, inference_method="rank")[0]
 
 class VQA_uform_unused(Singleton):
     def __init__(self):

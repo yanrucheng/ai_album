@@ -110,6 +110,7 @@ def parse_arguments():
         Folder Paths:
         """))
     pprint.pprint(args.folder_paths)  # Pretty print for folder paths
+    lang_str = {'en': 'English', 'ch': 'Chinese'}[args.language]
     print(textwrap.dedent(f"""
         Batch Size: {args.batch_size}
         Show Progress Bar: {'No' if args.disable_progress else 'Yes'}
@@ -120,6 +121,7 @@ def parse_arguments():
         Output Types: {args.output_type}
         Cache Flags: {args.cache_flags}
         Debug Mode: {'Yes' if args.debug else 'No'}
+        Language: {lang_str}
         """))
 
 
