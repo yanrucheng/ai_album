@@ -1,4 +1,5 @@
 from utils import Singleton
+import utils
 from PIL import Image
 from lavis.models import load_model_and_preprocess
 
@@ -15,7 +16,8 @@ class SimilarityCalculatorABC(Singleton):
 
     def get_embeddings(self, imgs, **kw):
         if self.model is None: self._load()
-        return self.model.get_embeddings(imgs, **kw)
+        with utils.suppress_c_stdout_stderr(suppress_stderr=True):
+            return self.model.get_embeddings(imgs, **kw)
 
     def similarity_func(self, *args, **kw):
         from similarities import utils
@@ -92,18 +94,20 @@ class ImageTextMatcher(Singleton, LavisModel):
     def _load(self):
         model_name = 'blip2_image_text_matching'
         print('Loading ', model_name)
-        self.model, self.vis_processors, self.txt_processors = load_model_and_preprocess(
-            name=model_name, model_type='coco', is_eval=True, device=self.device
-        )
+        with utils.suppress_c_stdout_stderr(suppress_stderr=True):
+            self.model, self.vis_processors, self.txt_processors = load_model_and_preprocess(
+                name=model_name, model_type='coco', is_eval=True, device=self.device
+            )
 
     def text_match(self, img, txt):
         if self.model is None: self._load()
 
-        image = self._get_img(img)
-        txt = self._get_txt(txt)
-        itm_output = self.model({"image": image, "text_input": txt}, match_head="itm")
-        itm_scores = torch.nn.functional.softmax(itm_output, dim=1)
-        return itm_scores[:, 1].item()
+        with utils.suppress_c_stdout_stderr(suppress_stderr=True):
+            image = self._get_img(img)
+            txt = self._get_txt(txt)
+            itm_output = self.model({"image": image, "text_input": txt}, match_head="itm")
+            itm_scores = torch.nn.functional.softmax(itm_output, dim=1)
+            return itm_scores[:, 1].item()
 
 class ImageCaptioner(Singleton):
     def __init__(self):
