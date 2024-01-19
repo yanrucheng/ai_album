@@ -87,7 +87,8 @@ def parse_arguments():
         p
         for path_pattern in args.folder_paths
         for p in glob.glob(path_pattern)
-        if '-clustered' not in p
+        for ignore_kw in ('-clustered', 'tmp')
+        if ignore_kw not in p
     ]
 
     if len(args.folder_paths) > 1:
