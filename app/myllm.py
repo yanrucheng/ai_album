@@ -267,27 +267,3 @@ class VQA_uform_unused(Singleton):
         decoded_text = processor.batch_decode(output[:, prompt_len:])[0]
         return decoded_text
 
-
-class MyTranslator_unused(Singleton):
-    def __init__(self):
-        super().__init__()
-        self.translation = None
-
-    def _load(self):
-        from transformers import AutoModelWithLMHead,AutoTokenizer,pipeline
-
-        mode_name = 'liam168/trans-opus-mt-en-zh'
-        model = AutoModelWithLMHead.from_pretrained(mode_name)
-        tokenizer = AutoTokenizer.from_pretrained(mode_name)
-        self.translation = pipeline("translation_en_to_zh", model=model, tokenizer=tokenizer)
-
-    def translate(self, s_eng, max_length=15):
-        if self.translation is None: self._load()
-
-        res_d = self.translation(s_eng, max_length=max_length)
-        if len(res_d) < 1 or 'translation_text' not in res_d[0]:
-            print(f'Translation Failed for: {s_eng}. Got: {str(res_d)}')
-            return ''
-        return res_d[0]['translation_text']
-
-

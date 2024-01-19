@@ -319,5 +319,5 @@ def replace_ing_words(text, filename='verb.json'):
     return re.sub(r'\b(\w+ing)\b', lambda match: verb_dict.get(match.group(0), match.group(0)), text)
 
 def remove_quantifier(text):
-    return re.sub(r'\b(a|an|some|is|are)\b', '', text)
+    return re.sub(r'\b(a|an|some|is|are|be|do)\b', '', text)
 
