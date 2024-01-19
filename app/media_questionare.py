@@ -77,11 +77,13 @@ class MediaQuestionare:
         Because text-matcher handles 'up-side down' most accurately.
         This function rotate the image and keep asking whether is upside-down.
         '''
-        confidences = {}
-        for a in (0, 90, 180, 270):
+        confidences = {0:0, 180:0, 90:0, 270:0}
+        for a in (0, 180, 90, 270):
             img_ = MediaManager.rotate_image(img, a)
             conf = self.matcher.text_match(img_, 'this photo is upside-down')
             confidences[(180 - a) % 360] = conf
+            if conf > 0.5:
+                break # early pruning for fast inference
 
         # Find the rotation with the highest confidence
         highest_confidence_angle = max(confidences.keys(), key=confidences.get)
