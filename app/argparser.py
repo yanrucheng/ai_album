@@ -84,10 +84,10 @@ def parse_arguments():
 
     # handles wildcard expansion
     args.folder_paths = [
-        p
+        path
         for path_pattern in args.folder_paths
-        for p in glob.glob(path_pattern)
-        if any(ignore_kw not in p for ignore_kw in ('-clustered', 'tmp'))
+        for path in glob.glob(path_pattern)
+        if not any(k in path for k in ('-clustered', 'tmp'))
     ]
 
     if len(args.folder_paths) > 1:
