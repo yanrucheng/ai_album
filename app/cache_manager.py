@@ -76,8 +76,10 @@ class CacheManager:
 
         def _save(data, path):
             if isinstance(data, Image.Image):
-                data.save(path, quality=IMG_QUALITY)
-                data.close()
+                img = data
+                if path.lower().endswith(('.jpg', '.jpeg')): # ignore transparency channel in jpg
+                    img = img.convert('RGB')
+                img.save(path, quality=IMG_QUALITY)
             elif isinstance(data, str):
                 with open(path, 'w', encoding='utf-8') as file:
                     file.write(data)

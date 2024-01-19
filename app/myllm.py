@@ -108,6 +108,7 @@ class ImageTextMatcher(Singleton, LavisModel):
 class ImageCaptioner(Singleton):
     def __init__(self):
         super().__init__()
+        self.blip_large_model = None
 
     def _load(self):
         from transformers import BlipProcessor, BlipForConditionalGeneration
@@ -119,15 +120,14 @@ class ImageCaptioner(Singleton):
 
     def caption(self, img, **kw):
         if self.blip_large_model is None: self._load()
-
         raw_image = img.convert('RGB')
 
         # conditional image captioning
         tpl = "a photography of"
-        inputs = blip_large_processor(raw_image, tpl, return_tensors="pt")
+        inputs = self.blip_large_processor(raw_image, tpl, return_tensors="pt")
 
-        out = blip_large_model.generate(**inputs)
-        res_full = blip_large_processor.decode(out[0], skip_special_tokens=True)
+        out = self.blip_large_model.generate(**inputs)
+        res_full = self.blip_large_processor.decode(out[0], skip_special_tokens=True)
         res = res_full[len(tpl):]
         return res.strip()
 
