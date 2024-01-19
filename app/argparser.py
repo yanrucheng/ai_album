@@ -45,9 +45,9 @@ def parse_arguments():
                         help='Output types can be (one/multiple of)thumbnail, original, or link')
 
     parser.add_argument('-lang', '--language',
-                        choices=['en', 'ch'],
+                        choices=['en', 'zh'],
                         default='en',
-                        help='Select the language for clustered folder names. (default: ch) (ch=chinese, en=english)')
+                        help='Select the language for clustered folder names. (default: en) (zh=chinese, en=english)')
 
     parser.add_argument('--debug', action='store_true',
                         help='Enable function tracking timer')
@@ -111,7 +111,7 @@ def parse_arguments():
         Folder Paths:
         """))
     pprint.pprint(args.folder_paths)  # Pretty print for folder paths
-    lang_str = {'en': 'English', 'ch': 'Chinese'}[args.language]
+    lang_str = {'en': 'English', 'zh': 'Chinese'}[args.language]
     print(textwrap.dedent(f"""
         Batch Size: {args.batch_size}
         Show Progress Bar: {'No' if args.disable_progress else 'Yes'}

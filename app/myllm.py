@@ -126,7 +126,7 @@ class ImageCaptioner(Singleton):
         tpl = "a photography of"
         inputs = self.blip_large_processor(raw_image, tpl, return_tensors="pt")
 
-        out = self.blip_large_model.generate(**inputs)
+        out = self.blip_large_model.generate(**inputs, **kw)
         res_full = self.blip_large_processor.decode(out[0], skip_special_tokens=True)
         res = res_full[len(tpl):]
         return res.strip()
@@ -145,24 +145,23 @@ class ImageCaptionerChinese(Singleton):
 class MyTranslator(Singleton):
     def __init__(self):
         super().__init__()
-        self.translation = None
+        self.model = None
 
     def _load(self):
-        from transformers import AutoModelWithLMHead,AutoTokenizer,pipeline
+        from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+        self.tokenizer = AutoTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-zh")
+        self.model = AutoModelForSeq2SeqLM.from_pretrained("Helsinki-NLP/opus-mt-en-zh")
 
-        mode_name = 'liam168/trans-opus-mt-en-zh'
-        model = AutoModelWithLMHead.from_pretrained(mode_name)
-        tokenizer = AutoTokenizer.from_pretrained(mode_name)
-        self.translation = pipeline("translation_en_to_zh", model=model, tokenizer=tokenizer)
+    def translate(self, s_eng, max_length=15):
+        if self.model is None: self._load()
 
-    def translate(self, s_eng, max_length=400):
-        if self.translation is None: self._load()
+        # Translate text
+        text_to_translate = s_eng
+        inputs = self.tokenizer.encode(text_to_translate, return_tensors="pt")
+        outputs = self.model.generate(inputs, max_new_tokens=max_length)
+        translated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-        res_d = self.translation(s_eng, max_length=max_length)
-        if len(res_d) < 1 or 'translation_text' not in res_d[0]:
-            print(f'Translation Failed for: {s_eng}. Got: {str(res_d)}')
-            return ''
-        return res_d[0]['translation_text']
+        return translated_text
 
 
 
@@ -235,7 +234,7 @@ class ImageCaptionerBlipLargeCOCO_unused(Singleton, LavisModel):
         if self.model is None: self._load()
 
         image = self._get_img(img)
-        return self.model.generate({"image": image}, **kw)
+        return self.model.generate({"image": image}, **kw)[0]
 
 
 class VQA_uform_unused(Singleton):
@@ -267,5 +266,28 @@ class VQA_uform_unused(Singleton):
         prompt_len = inputs["input_ids"].shape[1]
         decoded_text = processor.batch_decode(output[:, prompt_len:])[0]
         return decoded_text
+
+
+class MyTranslator_unused(Singleton):
+    def __init__(self):
+        super().__init__()
+        self.translation = None
+
+    def _load(self):
+        from transformers import AutoModelWithLMHead,AutoTokenizer,pipeline
+
+        mode_name = 'liam168/trans-opus-mt-en-zh'
+        model = AutoModelWithLMHead.from_pretrained(mode_name)
+        tokenizer = AutoTokenizer.from_pretrained(mode_name)
+        self.translation = pipeline("translation_en_to_zh", model=model, tokenizer=tokenizer)
+
+    def translate(self, s_eng, max_length=15):
+        if self.translation is None: self._load()
+
+        res_d = self.translation(s_eng, max_length=max_length)
+        if len(res_d) < 1 or 'translation_text' not in res_d[0]:
+            print(f'Translation Failed for: {s_eng}. Got: {str(res_d)}')
+            return ''
+        return res_d[0]['translation_text']
 
 

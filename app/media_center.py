@@ -20,14 +20,12 @@ from functools import lru_cache
 
 from function_tracker import global_tracker
 import utils
+import re
 
 from collections import namedtuple
 CacheStates = namedtuple('CacheStates', ['raw', 'rotate', 'thumb', 'caption', 'nude'])
 
-CAPTION_MIN_LENGTH = 10
-CAPTION_MAX_LENGTH = 30
-
-LANGUAGE_OPTIONS = ['en', 'ch'] # en for english, ch for chinese
+LANGUAGE_OPTIONS = ['en', 'zh'] # en for english, ch for chinese
 
 class MediaCenter:
     def __init__(self,
@@ -37,7 +35,7 @@ class MediaCenter:
                  check_rotation=True,
                  check_nude=True,
                  cache_flags=CacheStates(True,True,True,True,True),
-                 language='ch',
+                 language='en',
                  **kwargs):
         print("Initializing ImageSimilarity...")
 
@@ -96,7 +94,7 @@ class MediaCenter:
                                                     format_str="{base}_caption_en_{file_hash}.txt")
         self.caption_ch_cache_manager   = CacheManager(target_path=folder_path,
                                                     generate_func=self._generate_caption_ch,
-                                                    format_str="{base}_caption_ch_{file_hash}.txt")
+                                                    format_str="{base}_caption_zh_{file_hash}.txt")
 
         self._invalidate_cache()
 
@@ -209,20 +207,21 @@ class MediaCenter:
     def _get_caption(self, image_path):
         if self.language == 'en':
             return self.caption_en_cache_manager.load(image_path)
-        if self.language == 'ch':
+        if self.language == 'zh':
             return self.caption_ch_cache_manager.load(image_path)
         return 'langauge not supported'
 
     @global_tracker
     def _generate_caption_ch(self, image_path):
         caption_eng = self._generate_caption_en(image_path)
-        caption = self.tl.translate(caption_eng)
+        caption_eng_shorten = self.shorten_caption(caption_eng)
+        caption = self.tl.translate(caption_eng_shorten)
         return caption
 
     @global_tracker
     def _generate_caption_en(self, image_path):
         img = self.thumbnail_cache_manager.load(image_path)
-        return self.cp.caption(img, max_length=CAPTION_MAX_LENGTH, min_length=CAPTION_MIN_LENGTH)[0]
+        return self.cp.caption(img, max_new_tokens=20)
 
     @lru_cache(maxsize=64)
     def cluster(self, *distance_levels) -> Cluster:
@@ -240,13 +239,20 @@ class MediaCenter:
 
     def path_to_folder_name(self, image_path):
         caption = self._get_caption(image_path)
+        caption_short = self.shorten_caption(caption)
+        # remove all chinese/english punctuation
+        caption = re.sub(r'[\u3000-\u303F\uff01-\uffee]|[^\w\s]', '', caption)
+
+        folder_name = '-'.join(x.title() for x in caption.split())
+        return folder_name
+
+    def shorten_caption(self, caption):
         caption = caption.lower().replace(' ' * 2, ' ')
         caption = caption.replace(' and ', ' & ')
         caption = caption.replace('group of ', '').replace('couple of ', '').replace('pair of ', '')
         caption = utils.remove_quantifier(caption)
         caption = utils.replace_ing_words(caption)
-        folder_name = '-'.join(x.title() for x in caption.split())
-        return folder_name
+        return caption
 
     def cluster_to_thumbnail(self, cluster):
         return ClusterLeafProcessor.process(
