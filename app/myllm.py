@@ -112,11 +112,13 @@ class ImageCaptioner(Singleton):
     def _load(self):
         from transformers import BlipProcessor, BlipForConditionalGeneration
 
-        self.blip_large_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-large")
-        self.blip_large_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-large")
+        model_name = "Salesforce/blip-image-captioning-large"
+        print('Loading ', model_name)
+        self.blip_large_processor = BlipProcessor.from_pretrained(model_name)
+        self.blip_large_model = BlipForConditionalGeneration.from_pretrained(model_name)
 
     def caption(self, img, **kw):
-        if self.model is None: self._load()
+        if self.blip_large_model is None: self._load()
 
         raw_image = img.convert('RGB')
 
