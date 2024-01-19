@@ -92,8 +92,8 @@ class MediaCenter:
         self.caption_en_cache_manager   = CacheManager(target_path=folder_path,
                                                     generate_func=self._generate_caption_en,
                                                     format_str="{base}_caption_en_{file_hash}.txt")
-        self.caption_ch_cache_manager   = CacheManager(target_path=folder_path,
-                                                    generate_func=self._generate_caption_ch,
+        self.caption_zh_cache_manager   = CacheManager(target_path=folder_path,
+                                                    generate_func=self._generate_caption_zh,
                                                     format_str="{base}_caption_zh_{file_hash}.txt")
 
         self._invalidate_cache()
@@ -126,7 +126,7 @@ class MediaCenter:
                 self.thumbnail_cache_manager.clear(f)
             if not self.cache_flags.caption:
                 self.caption_en_cache_manager.clear(f)
-                self.caption_ch_cache_manager.clear(f)
+                self.caption_zh_cache_manager.clear(f)
             if not self.cache_flags.nude:
                 self.nude_tag_cache_manager.clear(f)
 
@@ -208,12 +208,12 @@ class MediaCenter:
         if self.language == 'en':
             return self.caption_en_cache_manager.load(image_path)
         if self.language == 'zh':
-            return self.caption_ch_cache_manager.load(image_path)
+            return self.caption_zh_cache_manager.load(image_path)
         return 'langauge not supported'
 
     @global_tracker
-    def _generate_caption_ch(self, image_path):
-        caption_eng = self._generate_caption_en(image_path)
+    def _generate_caption_zh(self, image_path):
+        caption_eng = self.caption_en_cache_manager.load(image_path)
         caption_eng_shorten = self.shorten_caption(caption_eng)
         caption = self.tl.translate(caption_eng_shorten)
         return caption
@@ -247,11 +247,14 @@ class MediaCenter:
         return folder_name
 
     def shorten_caption(self, caption):
-        caption = caption.lower().replace(' ' * 2, ' ')
         caption = caption.replace(' and ', ' & ')
         caption = caption.replace('group of ', '').replace('couple of ', '').replace('pair of ', '')
-        caption = utils.remove_quantifier(caption)
+        # stem verb
         caption = utils.replace_ing_words(caption)
+        # remove quantifiers
+        caption = re.sub(r'\b(a|an|some|is|are|be|do)\b', '', caption)
+        # remove multiple space and leading trailing space
+        caption = re.sub(' +', ' ', caption).strip()
         return caption
 
     def cluster_to_thumbnail(self, cluster):
