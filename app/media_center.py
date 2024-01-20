@@ -273,7 +273,7 @@ class MediaCenter:
             if len(lbls) <= 0:
                 return ''
             elif len(lbls) <= 3:
-                return f"[{'-'.join(sorted(lbls))}]"
+                return f"[{'-'.join(sorted(lbls))}]-"
             else:
                 return 'NSFW-'
 
@@ -283,7 +283,7 @@ class MediaCenter:
 
         label = labels(file_paths)
         date = date(file_paths)
-        return label + date + '-{key}'
+        return date + '-' + label + '{key}'
 
     def copy_with_meta_rotate(self, src, dst):
         assert src in self.media_fps, f'src={src} provided are not maintained by MediaCenter (not in self.media_fps). Maybe it is a thumbnail?'
