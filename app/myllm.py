@@ -172,24 +172,25 @@ class MyTranslator(Singleton):
 class NudeTagger:
 
     SENSITIVE_LABELS = {
-        "FEMALE_GENITALIA_COVERED":    '下体隐现',
-        # "FACE_FEMALE":                '女性面部',
-        "BUTTOCKS_EXPOSED":            '露臀',
-        "FEMALE_BREAST_EXPOSED":       '露胸',
-        "FEMALE_GENITALIA_EXPOSED":    '下体裸露',
-        "MALE_BREAST_EXPOSED":         '男露胸',
-        "ANUS_EXPOSED":                '肛门裸露',
-        # "FEET_EXPOSED":               '脚部裸露',
-        # "BELLY_COVERED":              '腹部遮盖',
-        # "FEET_COVERED":               '脚部遮盖',
-        # "ARMPITS_COVERED":            '腋下遮盖',
-        # "ARMPITS_EXPOSED":            '腋下裸露',
-        # "FACE_MALE":                  '男性面部',
-        # "BELLY_EXPOSED":              '腹部裸露',
-        "MALE_GENITALIA_EXPOSED":      '男下体裸露',
-        "ANUS_COVERED":                '肛门遮盖',
-        "FEMALE_BREAST_COVERED":       '胸隐现',
-        "BUTTOCKS_COVERED":            '臀隐现',
+        # Key: description, threshold (99 means disabled)
+        "FEMALE_GENITALIA_COVERED": ('下体隐现',   0.6),
+        "FACE_FEMALE":              ('女性面部',   99),
+        "BUTTOCKS_EXPOSED":         ('露臀',       0.6),
+        "FEMALE_BREAST_EXPOSED":    ('露胸',       0.75),
+        "FEMALE_GENITALIA_EXPOSED": ('下体裸露',   0.4),
+        "MALE_BREAST_EXPOSED":      ('男露胸',     99),
+        "ANUS_EXPOSED":             ('肛门裸露',   0.5),
+        "FEET_EXPOSED":             ('脚部裸露',   99),
+        "BELLY_COVERED":            ('腹部遮盖',   99),
+        "FEET_COVERED":             ('脚部遮盖',   99),
+        "ARMPITS_COVERED":          ('腋下遮盖',   99),
+        "ARMPITS_EXPOSED":          ('腋下裸露',   99),
+        "FACE_MALE":                ('男性面部',   99),
+        "BELLY_EXPOSED":            ('腹部裸露',   99),
+        "MALE_GENITALIA_EXPOSED":   ('男下体裸露', 0.6),
+        "ANUS_COVERED":             ('肛门遮盖',   0.5),
+        "FEMALE_BREAST_COVERED":    ('胸隐现',     0.8),
+        "BUTTOCKS_COVERED":         ('臀隐现',     0.8),
     }
 
     def __init__(self):
@@ -204,9 +205,21 @@ class NudeTagger:
                 res[lbl] = score
             res[lbl] = max(res[lbl], score)
 
+        assert all(lbl in self.SENSITIVE_LABELS for lbl in res), \
+                f"This should not happen. Unrecognized nude tag. got: {', '.join(res.keys())}"
+
+        def get_desc(lbl):
+            return self.SENSITIVE_LABELS.get(lbl, ('',))[0]
+
+        def is_sensitive(lbl, score):
+            return score >= self.SENSITIVE_LABELS.get(lbl, ('',99))[1]
+
         # mark sensitive label
         marked_res = {
-            lbl: {'score': score, 'sensitive': lbl in self.SENSITIVE_LABELS, 'msg': self.SENSITIVE_LABELS.get(lbl, '')}
+            lbl: {'score': score,
+                  'sensitive': is_sensitive(lbl, score),
+                  'msg': get_desc(lbl),
+                  }
             for lbl, score in res.items()
         }
         return marked_res
