@@ -1,6 +1,7 @@
 # biz
 **/.similarity_cache
 model_cache
+app/samples
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
