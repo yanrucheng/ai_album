@@ -16,6 +16,9 @@ import json
 import re
 import pytz
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # Print related
 @contextlib.contextmanager
@@ -279,12 +282,53 @@ def safe_delete(file_path):
 # Example usage
 # create_relative_symlink('/path/to/target', '/path/to/link_folder')
 
-def copy_with_meta(src: PathType, dst: PathType):
-    assert src and dst, f'Both src, dst are a must. got src={src}; dst={dst}'
-
-    # Copy the file
-    shutil.copy2(src, dst)
-    inplace_overwrite_meta(src, dst)
+def copy_with_meta(src: PathType, dst: PathType) -> bool:
+    """
+    Safely copy a file from src to dst while preserving metadata.
+    
+    Args:
+        src: Source file path
+        dst: Destination file path
+        
+    Returns:
+        bool: True if operation succeeded, False otherwise
+    """
+    try:
+        # Validate inputs
+        if not src or not dst:
+            raise ValueError(f'Both src and dst are required. Got src={src}, dst={dst}')
+            
+        src_path = Path(src) if not isinstance(src, Path) else src
+        dst_path = Path(dst) if not isinstance(dst, Path) else dst
+        
+        # Check if source exists
+        if not src_path.exists():
+            raise FileNotFoundError(f'Source file does not exist: {src_path}')
+            
+        # Check if source is a file
+        if not src_path.is_file():
+            raise ValueError(f'Source is not a file: {src_path}')
+            
+        # Create parent directory if needed
+        dst_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        logger.debug(f'Copying file from {src_path} to {dst_path}')
+        
+        # Copy the file
+        shutil.copy2(src_path, dst_path)
+        
+        # Handle metadata
+        try:
+            inplace_overwrite_meta(src_path, dst_path)
+        except Exception as meta_error:
+            logger.debug(f'Failed to copy metadata from {src_path} to {dst_path}: {meta_error}')
+            # The file copy succeeded even if metadata failed, so we don't return False here
+            
+        return True
+        
+    except Exception as e:
+        logger.debug(f'Failed to copy file from {src} to {dst}: {e}', exc_info=True)
+        return False
 
 def inplace_overwrite_meta(src: PathType, target: PathType):
     # Get timestamps from the source file
