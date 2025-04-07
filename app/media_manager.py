@@ -6,8 +6,8 @@ import os
 from utils import PathType
 import utils
 import subprocess
-from media_unit import MediaGrouper
 import logging
+from media_unit import MediaGrouper
 
 logger = logging.getLogger(__name__)
 
@@ -86,12 +86,15 @@ class MediaManager(utils.Singleton):
         return img
 
     @classmethod
-    def get_all_valid_media(cls, folder_path):
+    def get_all_valid_media(cls, folder_path, grouper=None):
+
+        if grouper is None:
+            grouper = MediaGrouper()
+
         img_fps = sorted(os.path.join(root, f) for root, _, files in os.walk(folder_path) for f in files if cls.is_image(f))
         vid_fps = sorted(os.path.join(root, f) for root, _, files in os.walk(folder_path) for f in files if cls.is_video(f))
         fps = img_fps + vid_fps
 
-        grouper = MediaGrouper()
         media_units = grouper.deduplicate_paths(fps)
         media_unit_paths = [unit.representative_path for unit in media_units]
 
@@ -118,27 +121,33 @@ class MediaManager(utils.Singleton):
         valid_paths = []
 
         for path in paths:
-            if os.path.split(path)[1].startswith("._"):
-                continue
-
-            try:
-                if cls.is_image(path):
-                    # Try opening an image file
-                    with Image.open(path) as img:
-                        img.verify()
-                elif cls.is_video(path):
-                    with utils.suppress_c_stdout_stderr():
-                        # Try opening a video file
-                        cap = cv2.VideoCapture(path)
-                        if not cap.isOpened():
-                            raise IOError("Cannot open video")
-                        cap.release()
-                else:
-                    print(f"Unsupported file format: {path}")
-                    continue
-
+            if cls.validate(path):
                 valid_paths.append(path)
-            except (IOError, SyntaxError) as e:
-                print(f"Invalid media file detected: {path}. An error occurred: {e})")
 
         return valid_paths
+
+    @classmethod
+    def validate(cls, path):
+        if os.path.split(path)[1].startswith("._"):
+            return False
+
+        try:
+            if cls.is_image(path):
+                # Try opening an image file
+                with Image.open(path) as img:
+                    img.verify()
+                    return True
+            elif cls.is_video(path):
+                with utils.suppress_c_stdout_stderr():
+                    # Try opening a video file
+                    cap = cv2.VideoCapture(path)
+                    if not cap.isOpened():
+                        raise IOError("Cannot open video")
+                    cap.release()
+                    return True
+            else:
+                print(f"Unsupported file format: {path}")
+        except (IOError, SyntaxError) as e:
+            print(f"Invalid media file detected: {path}. An error occurred: {e})")
+        return False
+

@@ -13,8 +13,10 @@ import myllm
 from media_questionare import MediaQuestionare
 from utils import MyPath, get_mode
 from media_manager import MediaManager
+from media_unit import MediaGrouper
 from my_cluster import HierarchicalCluster, ClusterKeyProcessor, ClusterLeafProcessor
 from my_cluster import Cluster
+from my_cluster import media_unit_cluster_to_full_cluster
 
 from functools import lru_cache
 
@@ -51,7 +53,8 @@ class MediaCenter:
 
 
         self.folder_path = folder_path
-        self.media_fps = MediaManager.get_all_valid_media(folder_path)
+        self.mg = MediaGrouper()
+        self.media_fps = MediaManager.get_all_valid_media(folder_path, self.mg)
         self.video_mng = VideoManager(folder_path, show_progress_bar)
         self.cp = myllm.ImageCaptioner()
         self.tl = myllm.MyTranslator()
@@ -133,13 +136,13 @@ class MediaCenter:
     @global_tracker
     def _compute_raw_thumbnail(self, image_path):
         def compute_thumbnail(path):
-            if MediaManager.is_image(path):
+            if MediaManager.is_image(path) and MediaManager.validate(path):
                 with Image.open(image_path) as img:
                     img.load()
                     MediaManager.as_720_thumbnail_inplace(img)
                     return img
 
-            if MediaManager.is_video(path):
+            if MediaManager.is_video(path) and MediaManager.validate(path):
                 return self.video_mng.extract_key_frame(path)
 
             return None
@@ -235,7 +238,10 @@ class MediaCenter:
         c_named = self.image_cluster.cluster( c_time, distance_levels,)
         c_named_formatted = ClusterKeyProcessor.name(c_named,
                 self._generate_cluster_name_formatter)
-        return c_named_formatted
+
+        c_full = media_unit_cluster_to_full_cluster(c_named_formatted, self.mg)
+
+        return c_full
 
     def path_to_folder_name(self, image_path):
         caption = self._get_caption(image_path)
@@ -258,9 +264,15 @@ class MediaCenter:
         return caption
 
     def cluster_to_thumbnail(self, cluster):
+
+        def get_thumbnail_path(path) -> str:
+            if not MediaManager.validate(path):
+                return None
+            return self.thumbnail_cache_manager.to_cache_path(path)
+
         return ClusterLeafProcessor.process(
             cluster,
-            self.thumbnail_cache_manager.to_cache_path,
+            get_thumbnail_path
         )
 
     def _generate_cluster_name_formatter(self, file_paths):

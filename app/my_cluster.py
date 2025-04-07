@@ -4,8 +4,31 @@ from utils import MyPath
 import os
 import numpy as np
 import utils
+from media_unit import MediaGrouper
 
 Cluster = Dict[str, 'Cluster'] # recursive typing
+
+
+def media_unit_cluster_to_full_cluster(cluster: Cluster,
+                                       media_grouper: MediaGrouper
+                                       ):
+    def _traverse(cluster):
+        res = {}
+        for cluster_id, contents in cluster.items():
+            if isinstance(contents, dict):
+                # If the contents are a dictionary, recurse into it
+                res[cluster_id] = _traverse(contents)
+            elif isinstance(contents, list):
+                # If the contents are a list, copy the files into the current cluster directory
+                res[cluster_id] = [
+                    filepath
+                    for fp in contents
+                    for filepath in media_grouper.get_unit(fp).files
+                ]
+        return res
+
+    return _traverse(cluster)
+
 
 Path = str
 def copy_file_as_cluster(cluster: Cluster,
@@ -43,7 +66,8 @@ class ClusterLeafProcessor:
         if isinstance(cluster, dict):
             return {k: cls.process(v, obj_to_obj) for k,v in cluster.items()}
         elif isinstance(cluster, list):
-            return [obj_to_obj(x) for x in cluster]
+            res = [obj_to_obj(x) for x in cluster]
+            return [x for x in res if x is not None]
         else:
             return None
 
