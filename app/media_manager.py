@@ -91,9 +91,7 @@ class MediaManager(utils.Singleton):
         if grouper is None:
             grouper = MediaGrouper()
 
-        img_fps = sorted(os.path.join(root, f) for root, _, files in os.walk(folder_path) for f in files if cls.is_image(f))
-        vid_fps = sorted(os.path.join(root, f) for root, _, files in os.walk(folder_path) for f in files if cls.is_video(f))
-        fps = img_fps + vid_fps
+        fps = sorted(os.path.join(root, f) for root, _, files in os.walk(folder_path) for f in files)
 
         media_units = grouper.deduplicate_paths(fps)
         media_unit_paths = [unit.representative_path for unit in media_units]
