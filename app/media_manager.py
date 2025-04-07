@@ -6,6 +6,7 @@ import os
 from utils import PathType
 import utils
 import subprocess
+from media_unit import MediaUnitManager
 
 
 
@@ -88,8 +89,8 @@ class MediaManager(utils.Singleton):
         img_fps = sorted(os.path.join(root, f) for root, _, files in os.walk(folder_path) for f in files if cls.is_image(f))
         vid_fps = sorted(os.path.join(root, f) for root, _, files in os.walk(folder_path) for f in files if cls.is_video(f))
         fps = img_fps + vid_fps
-        abs_fps = [ os.path.abspath(p) for p in fps]
-        valid_fps = cls.validate_media(fps)
+        media_unit_paths = MediaUnitManager.get_unique_paths(fps)
+        valid_fps = cls.validate_media(media_unit_paths)
         return valid_fps
 
 
