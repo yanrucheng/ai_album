@@ -4,6 +4,7 @@ import pprint
 import utils
 from function_tracker import global_tracker
 from argparser import parse_arguments, to_default_output_path
+import logging
 
 
 def app(in_folder, args):
@@ -51,6 +52,10 @@ def main():
 
     if args.debug:
         global_tracker.enable()
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
 
     for f in args.folder_paths:
         app(f, args)

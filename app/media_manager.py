@@ -6,9 +6,10 @@ import os
 from utils import PathType
 import utils
 import subprocess
-from media_unit import MediaUnitManager
+from media_unit import MediaGrouper
+import logging
 
-
+logger = logging.getLogger(__name__)
 
 class MediaManager(utils.Singleton):
     image_exts = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.heic', '.heif')
@@ -89,7 +90,16 @@ class MediaManager(utils.Singleton):
         img_fps = sorted(os.path.join(root, f) for root, _, files in os.walk(folder_path) for f in files if cls.is_image(f))
         vid_fps = sorted(os.path.join(root, f) for root, _, files in os.walk(folder_path) for f in files if cls.is_video(f))
         fps = img_fps + vid_fps
-        media_unit_paths = MediaUnitManager.get_unique_paths(fps)
+
+        grouper = MediaGrouper()
+        media_units = grouper.deduplicate_paths(fps)
+        media_unit_paths = [unit.representative_path for unit in media_units]
+
+        for unit in media_units:
+            logger.debug(f"unit: {unit.unit_id}")
+            for f in unit.files:
+                logger.debug(f"    - {f}")
+
         valid_fps = cls.validate_media(media_unit_paths)
         return valid_fps
 
