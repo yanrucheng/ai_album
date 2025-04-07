@@ -1,4 +1,5 @@
 import os
+import platform
 import shutil
 import hashlib
 import functools
@@ -177,19 +178,28 @@ class MyPath:
 
     @property
     def timestamp(self):
+        timestamp = None
         try:
-            stat = os.stat(self.path)
-            # order of birthtime, create time, modification time
-            target_ts = next(
-                (ts
-                 for ts in [getattr(stat, 'st_birthtime', None), stat.st_ctime, stat.st_mtime] if ts is not None),
-                None
-            )
-            return target_ts
+            stat_info = os.stat(self.path)
+            if platform.system() == 'Windows':
+                timestamp = stat_info.st_ctime
+            else:
+                try:
+                    timestamp = stat_info.st_birthtime  # macOS
+                except AttributeError:
+                    try:
+                        timestamp = stat_info.st_mtime  # Linux/Unix fallback
+                    except AttributeError:
+                        timestamp = time.time()  # Ultimate fallback
+        except (OSError, AttributeError):
+            timestamp = time.time()
+        return timestamp
 
-        except OSError as error:
-            print(f"Error getting dates for {self.path}: {error}")
+    @property
+    def timestr(self):
+        if self.timestamp is None:
             return None
+        return datetime.fromtimestamp(self.timestamp, self.timezone).strftime('%Y-%m-%d %H:%M:%S')
 
     @property
     def date(self):

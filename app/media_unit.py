@@ -1,9 +1,9 @@
 import os
-import platform
 from dataclasses import dataclass
 from typing import Dict, List
 from collections import defaultdict
 from pathlib import Path
+from utils import MyPath
 import time
 
 @dataclass
@@ -15,7 +15,7 @@ class MediaUnit:
 class MediaGrouper:
     def __init__(self):
         self.parent = {}
-        self.file_metadata = {}
+        self.files = []
         self.units = []
 
     def deduplicate_paths(self, filepaths: List[str]):
@@ -29,25 +29,8 @@ class MediaGrouper:
     def add_file(self, filepath: str):
         """Add a file with automatic metadata extraction (Python 3.8 compatible)"""
         path = Path(filepath)
-        base_name = path.stem
-        
-        # Robust timestamp extraction for Python 3.8
-        try:
-            stat_info = os.stat(filepath)
-            if platform.system() == 'Windows':
-                timestamp = stat_info.st_ctime
-            else:
-                try:
-                    timestamp = stat_info.st_birthtime  # macOS
-                except AttributeError:
-                    try:
-                        timestamp = stat_info.st_mtime  # Linux/Unix fallback
-                    except AttributeError:
-                        timestamp = time.time()  # Ultimate fallback
-        except (OSError, AttributeError):
-            timestamp = time.time()
             
-        self.file_metadata[str(filepath)] = (base_name, timestamp)
+        self.files += filepath,
         self.parent[str(filepath)] = str(filepath)
         
     def _find(self, filepath: str) -> str:
@@ -67,8 +50,9 @@ class MediaGrouper:
     def apply_filename_strategy(self):
         """Group files sharing the same base name"""
         base_groups = defaultdict(list)
-        for file, (base, _) in self.file_metadata.items():
-            base_groups[base].append(file)
+        for file in self.files:
+            path = Path(file)
+            base_groups[path.stem].append(file)
             
         for group in base_groups.values():
             if len(group) > 1:
@@ -79,12 +63,13 @@ class MediaGrouper:
     
     def apply_temporal_strategy(self, threshold_sec: float):
         """Group files within time threshold"""
-        time_sorted = sorted(self.file_metadata.items(), 
-                           key=lambda x: x[1][1])  # Sort by timestamp
+        file_times = [(x, MyPath(x).timestamp) for x in self.files]
+        time_sorted = sorted(file_times,
+                           key=lambda x: x[1])  # Sort by timestamp
         
         for i in range(1, len(time_sorted)):
-            curr_file, (_, curr_time) = time_sorted[i]
-            prev_file, (_, prev_time) = time_sorted[i-1]
+            curr_file, curr_time = time_sorted[i]
+            prev_file, prev_time = time_sorted[i-1]
             
             if abs(curr_time - prev_time) <= threshold_sec:
                 self._union(prev_file, curr_file)
@@ -93,7 +78,7 @@ class MediaGrouper:
 
     def _update_units(self) -> None:
         groups = defaultdict(list)
-        for file in self.file_metadata:
+        for file in self.files:
             root = self._find(file)
             groups[root].append(file)
         
@@ -102,8 +87,8 @@ class MediaGrouper:
             f = self._pick_representative(files)
             self.units[f] = MediaUnit(
                 unit_id=f,
-                files=sorted(files),
                 representative_path=f,
+                files=sorted(files),
             )
 
     def get_unit(self, unit_id):
@@ -111,7 +96,7 @@ class MediaGrouper:
 
     def get_units(self) -> Dict[str, MediaUnit]:
         """Create final merged units after all strategies"""
-        return sorted(self.units.values())
+        return sorted(self.units.values(), key=lambda x:x.unit_id)
     
     def _pick_representative(self, files: List[str]) -> str:
         """Select most suitable representative file"""

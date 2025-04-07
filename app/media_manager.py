@@ -3,7 +3,7 @@ import cv2
 from pillow_heif import register_heif_opener
 register_heif_opener()
 import os
-from utils import PathType
+from utils import PathType, MyPath
 import utils
 import subprocess
 import logging
@@ -101,7 +101,8 @@ class MediaManager(utils.Singleton):
         for unit in media_units:
             logger.debug(f"unit: {unit.unit_id}")
             for f in unit.files:
-                logger.debug(f"    - {f}")
+                path = MyPath(f)
+                logger.debug(f"    - {f}, {path.timestr}")
 
         valid_fps = cls.validate_media(media_unit_paths)
         return valid_fps
