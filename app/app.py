@@ -4,7 +4,7 @@ import pprint
 import utils
 from function_tracker import global_tracker
 from argparser import parse_arguments, to_default_output_path
-import logging
+from log_config import set_logger_config
 
 
 def app(in_folder, args):
@@ -25,25 +25,25 @@ def app(in_folder, args):
     s.compute_all_tags()
 
     # Clustering images with specified distance levels
-    clusters = s.cluster(*args.distance_levels)
+    cluster = s.full_cluster(*args.distance_levels)
 
     output_path = args.output_path
     if output_path == '':
         output_path = to_default_output_path(in_folder)
 
     if 'print' in args.output_type:
-        pprint.pprint(clusters)
+        pprint.pprint(cluster)
 
     if 'original' in args.output_type:
-        copy_file_as_cluster(clusters, output_path,
+        copy_file_as_cluster(cluster, output_path,
                              operator = s.copy_with_meta_rotate)
 
     if 'thumbnail' in args.output_type:
-        thumb_clusters = s.cluster_to_thumbnail(clusters)
-        copy_file_as_cluster(thumb_clusters, output_path)
+        thumb_cluster = s.thumbnail_cluster(*args.distance_levels)
+        copy_file_as_cluster(thumb_cluster, output_path)
 
     if 'link' in args.output_type:
-        copy_file_as_cluster(clusters, output_path,
+        copy_file_as_cluster(cluster, output_path,
                              operator = utils.create_relative_symlink)
 
 
@@ -52,10 +52,7 @@ def main():
 
     if args.debug:
         # global_tracker.enable()
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
+        set_logger_config()
 
     for f in args.folder_paths:
         app(f, args)

@@ -227,8 +227,7 @@ class MediaCenter:
         return self.cp.caption(img, max_new_tokens=20)
 
     @lru_cache(maxsize=64)
-    def cluster(self, *distance_levels) -> Cluster:
-
+    def unit_cluster(self, *distance_levels) -> Cluster:
         # use time to cluster
         # distance_levels = [] means if 1 photos are taken
         # longer than 20 min = 1200 seconds. they are not in a group
@@ -239,9 +238,26 @@ class MediaCenter:
         c_named_formatted = ClusterKeyProcessor.name(c_named,
                 self._generate_cluster_name_formatter)
 
-        c_full = media_unit_cluster_to_full_cluster(c_named_formatted, self.mg)
+        return c_named_formatted
 
+    def full_cluster(self, *args) -> Cluster:
+        c_full = ClusterLeafProcessor.process(
+            self.unit_cluster(*args),
+            lambda x: self.mg.get_unit(x).files,
+        )
         return c_full
+
+    def thumbnail_cluster(self, *args):
+
+        def get_thumbnail_path(path) -> str:
+            if not MediaManager.validate(path):
+                return None
+            return self.thumbnail_cache_manager.to_cache_path(path)
+
+        return ClusterLeafProcessor.process(
+            self.unit_cluster(*args),
+            get_thumbnail_path
+        )
 
     def path_to_folder_name(self, image_path):
         caption = self._get_caption(image_path)
@@ -262,18 +278,6 @@ class MediaCenter:
         # remove multiple space and leading trailing space
         caption = re.sub(' +', ' ', caption).strip()
         return caption
-
-    def cluster_to_thumbnail(self, cluster):
-
-        def get_thumbnail_path(path) -> str:
-            if not MediaManager.validate(path):
-                return None
-            return self.thumbnail_cache_manager.to_cache_path(path)
-
-        return ClusterLeafProcessor.process(
-            cluster,
-            get_thumbnail_path
-        )
 
     def _generate_cluster_name_formatter(self, file_paths):
         def labels(file_paths):

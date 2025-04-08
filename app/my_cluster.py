@@ -66,8 +66,17 @@ class ClusterLeafProcessor:
         if isinstance(cluster, dict):
             return {k: cls.process(v, obj_to_obj) for k,v in cluster.items()}
         elif isinstance(cluster, list):
-            res = [obj_to_obj(x) for x in cluster]
-            return [x for x in res if x is not None]
+            new_leaf = []
+            for node in cluster:
+                res = obj_to_obj(node)
+                if res is None:
+                    continue
+                elif isinstance(res, list):
+                    new_leaf += res
+                else:
+                    new_leaf += res,
+
+            return new_leaf
         else:
             return None
 

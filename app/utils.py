@@ -312,8 +312,6 @@ def copy_with_meta(src: PathType, dst: PathType) -> bool:
         # Create parent directory if needed
         dst_path.parent.mkdir(parents=True, exist_ok=True)
         
-        logger.debug(f'Copying file from {src_path} to {dst_path}')
-        
         # Copy the file
         shutil.copy2(src_path, dst_path)
         
