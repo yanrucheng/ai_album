@@ -377,7 +377,7 @@ def get_unique_key(key, d):
 
     return f"{key}-{i}"
 
-# String 
+# String related
 
 def replace_ing_words(text, filename='verb.json'):
     dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -387,4 +387,3 @@ def replace_ing_words(text, filename='verb.json'):
         verb_dict = json.load(file)
 
     return re.sub(r'\b(\w+ing)\b', lambda match: verb_dict.get(match.group(0), match.group(0)), text)
-

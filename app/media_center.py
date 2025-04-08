@@ -14,7 +14,9 @@ from media_questionare import MediaQuestionare
 from utils import MyPath, get_mode
 from media_manager import MediaManager
 from media_unit import MediaGrouper
-from my_cluster import HierarchicalCluster, ClusterKeyProcessor, ClusterLeafProcessor
+
+from my_cluster import AgglomerativeHierarchicalCluster, LinearHierarchicalCluster
+from my_cluster import ClusterKeyProcessor, ClusterLeafProcessor
 from my_cluster import Cluster
 from my_cluster import media_unit_cluster_to_full_cluster
 
@@ -103,14 +105,19 @@ class MediaCenter:
 
 
         # Initialize similarity cluster
-        self.time_cluster = HierarchicalCluster(
-                embedding_func = lambda p: np.array([MyPath(p).timestamp]),
-                similarity_func = lambda a,b: abs(a - b),
-                obj_to_name = lambda p: MyPath(p).date + MyPath(p).time_of_a_day)
-        self.image_cluster = HierarchicalCluster(
-                embedding_func = self.embedding_cache_manager.load,
-                similarity_func = self.similarity_model.similarity_func,
-                obj_to_name = self.path_to_folder_name)
+        # self.time_cluster = AgglomerativeHierarchicalCluster(
+        #         embedding_func = lambda p: np.array([MyPath(p).timestamp]),
+        #         similarity_func = lambda a,b: abs(a - b),
+        #         obj_to_name = lambda p: MyPath(p).date + MyPath(p).time_of_a_day)
+        # self.image_cluster = AgglomerativeHierarchicalCluster(
+        #         embedding_func = self.embedding_cache_manager.load,
+        #         similarity_func = self.similarity_model.similarity_func,
+        #         obj_to_name = self.path_to_folder_name)
+        self.image_cluster = LinearHierarchicalCluster(
+                 embedding_func = self.embedding_cache_manager.load,
+                 similarity_func = self.similarity_model.similarity_func,
+                 sort_key_func = lambda x: MyPath(x).timestamp,
+                 obj_to_name = self.path_to_folder_name)
         self._initialize()
 
     @property
@@ -226,15 +233,17 @@ class MediaCenter:
         img = self.thumbnail_cache_manager.load(image_path)
         return self.cp.caption(img, max_new_tokens=20)
 
+    def cluster(self, *args) -> Cluster:
+        self.full_cluster(*args)
+
     @lru_cache(maxsize=64)
     def unit_cluster(self, *distance_levels) -> Cluster:
         # use time to cluster
         # distance_levels = [] means if 1 photos are taken
         # longer than 20 min = 1200 seconds. they are not in a group
-        c_time = self.time_cluster.cluster( {0: self.media_fps}, [1200])
-
-        # use image content to clsuter
-        c_named = self.image_cluster.cluster( c_time, distance_levels,)
+        raw = {0: self.media_fps}
+        # c_time = self.time_cluster.cluster( raw, [1200])
+        c_named = self.image_cluster.cluster( raw, distance_levels,)
         c_named_formatted = ClusterKeyProcessor.name(c_named,
                 self._generate_cluster_name_formatter)
 

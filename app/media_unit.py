@@ -5,6 +5,9 @@ from collections import defaultdict
 from pathlib import Path
 from utils import MyPath
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class MediaUnit:
@@ -70,6 +73,7 @@ class MediaGrouper:
         for i in range(1, len(time_sorted)):
             curr_file, curr_time = time_sorted[i]
             prev_file, prev_time = time_sorted[i-1]
+            logger.debug(f'{curr_file} at {curr_time}, {curr_time - prev_time} sec to the prev.')
             
             if abs(curr_time - prev_time) <= threshold_sec:
                 self._union(prev_file, curr_file)
