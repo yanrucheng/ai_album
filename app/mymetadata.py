@@ -196,6 +196,20 @@ class PhotoMetadataExtractor:
                     aperture_value = numerator / denominator
                 except (ValueError, ZeroDivisionError):
                     pass
+
+            # Photo
+            orientation = int(get_attr('Orientation', 'tiff') or 0)
+            orientation_map = {
+                1: 0,
+                2: 0,
+                3: 180,
+                4: 180,
+                5: 270,
+                6: 270,
+                7: 90,
+                8: 90,
+            }
+            rotate = orientation_map[orientation]
             
             # Clean empty values from the results
             def clean_dict(d: dict) -> dict:
@@ -232,7 +246,8 @@ class PhotoMetadataExtractor:
                     'create_date': get_attr('DateTimeOriginal', 'exif'),
                     'exposure': get_attr('ExposureTime', 'exif'),
                     'iso': int(get_attr('ISOSpeedRatings', 'exif') or 0),
-                    'orientation': int(get_attr('Orientation', 'tiff') or 0),
+                    'orientation': orientation,
+                    'rotate': rotate,
                     'file_format': get_attr('format', 'dc')
                 })
             }

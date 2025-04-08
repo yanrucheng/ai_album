@@ -183,6 +183,12 @@ class MediaCenter:
     @global_tracker
     def _get_media_rotation_clockwise_degree(self, image_path):
         if not self.check_rotation: return 0
+
+        photo_meta = self.meta_tag_cache_manager.load(image_path).get('photo', {})
+        if photo_meta:
+            rotate = photo_meta.get('rotate', 0)
+            return rotate
+
         return self.rotation_tag_cache_manager.load(image_path).get('rotate', 0)
 
     @global_tracker
@@ -227,7 +233,8 @@ class MediaCenter:
             _ = self._get_metadata(fp)
             _ = self._get_nude_tag(fp)
             if self.check_rotation:
-                _ = self.rotation_tag_cache_manager.load(fp)
+                # if xmp contains rotation info then no need to compute
+                _ = self._get_media_rotation_clockwise_degree(fp)
 
     @global_tracker
     def _generate_raw_embedding(self, image_path):
@@ -258,7 +265,18 @@ class MediaCenter:
     @global_tracker
     def _generate_caption_en(self, image_path):
         img = self.thumbnail_cache_manager.load(image_path)
-        return self.cp.caption(img, max_new_tokens=150, num_beams=5)
+        return self.cp.caption(img,
+                               max_new_tokens=150,     # 限制生成部分长度（确保在100-150范围内）
+                               min_new_tokens=50,     # 确保至少生成100个token（可选）
+                               num_beams=5,            # 束搜索宽度（提高多样性）
+                               # temperature=0.9,        # 适度随机性（避免过于机械）
+                               # top_k=50,               # 限制候选词范围（避免低概率词）
+                               # top_p=0.95,             # 核采样（保持多样性）
+                               repetition_penalty=1.5, # 抑制重复词汇（>1 减少重复）
+                               length_penalty=1.1,     # 鼓励稍长输出（>1 增加长度）
+                               # do_sample=True,         # 启用采样策略（结合top_k/top_p）
+                               early_stopping=True     # 提前终止（避免冗余）
+                               )
 
     def cluster(self, *args) -> Cluster:
         self.full_cluster(*args)
