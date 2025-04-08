@@ -12,5 +12,6 @@ def set_default_debug_logger_config():
 
 def suppress_third_party_lib():
     lib_to_suppress = ['PIL', 'faiss', 'urllib3']
-    logging.getLogger("PIL").setLevel(logging.INFO)
+    for l in lib_to_suppress:
+        logging.getLogger(l).setLevel(logging.INFO)
 
