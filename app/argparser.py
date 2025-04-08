@@ -52,32 +52,35 @@ def parse_arguments():
     parser.add_argument('--debug', action='store_true',
                         help='Enable function tracking timer')
 
-    parser.add_argument("-cf", "--cache-flags", type=validate_cache_arg, default = '11111',
+    parser.add_argument("-cf", "--cache-flags", type=validate_cache_arg, default = '111111',
                         help=textwrap.dedent('''\
                             Control cache settings using a binary string. Each digit represents a cache (A, B, C, D, E) in order.
 
                             Pipeline structure:
-                            A -> B -> C -> D
-                                \
-                                -> E
+                              -> B
+                             /
+                            A -> C -> D -> E
+                             \\
+                              -> F
 
                             where:
                             - A: raw media material cache
-                            - B: media rotation detection cache
-                            - C: thumbnail cache
-                            - D: caption cache
-                            - E: nude detection tag cache
+                            - B: metadata
+                            - C: media rotation detection cache
+                            - D: thumbnail cache
+                            - E: caption cache
+                            - F: nude detection tag cache
 
                             '1' turns a cache on, and '0' turns it off.
                             Turning off a cache also turns off all subsequent caches in the pipeline (A off -> B, C, D off).
                             However, E is independent; turning off C does not affect E.
 
                             Examples:
-                            - '00000' turns all cache off
-                            - '01000' works as '11000' because the cache of B masks the nonexistence of A
-                            - '10101' turns caches A, C, and E on. B and D are off.
-                            - '01010' actually works as '11010' due to pipeline dependencies.
-                            - '11101' remains as it is since D and E are independent.'''))
+                            - '000000' turns all cache off
+                            - '010000' works as '11000' because the cache of B masks the nonexistence of A
+                            - '101001' turns caches A, C, and E on. B and D are off.
+                            - '010100' actually works as '11010' due to pipeline dependencies.
+                            - '111010' remains as it is since D and E are independent.'''))
 
 
     args = parser.parse_args()
@@ -98,10 +101,11 @@ def parse_arguments():
     cs = args.cache_flags
     args.cache_flags = CacheStates(
         raw = cs[0] == '1',
-        rotate = cs[1] == '1',
-        thumb = cs[2] == '1',
-        caption = cs[3] == '1',
-        nude = cs[4] == '1'
+        meta = cs[1] == '1',
+        rotate = cs[2] == '1',
+        thumb = cs[3] == '1',
+        caption = cs[4] == '1',
+        nude = cs[5] == '1'
     )
 
     # Print a summary of the inputs using textwrap for better formatting
@@ -128,8 +132,8 @@ def parse_arguments():
     return args
 
 def validate_cache_arg(cache_flags_str):
-    if len(cache_flags_str) != 5 or not all(char in '01' for char in cache_flags_str):
-        raise argparse.ArgumentTypeError(f"Cache flag must be a binary string of length 5, e.g., '10101'. got: {cache_flags_str}")
+    if len(cache_flags_str) != 6 or not all(char in '01' for char in cache_flags_str):
+        raise argparse.ArgumentTypeError(f"Cache flag must be a binary string of length 6, e.g., '101010'. got: {cache_flags_str}")
     return cache_flags_str
 
 def validate_output_folder(path):

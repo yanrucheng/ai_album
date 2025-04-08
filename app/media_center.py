@@ -32,7 +32,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from collections import namedtuple
-CacheStates = namedtuple('CacheStates', ['raw', 'rotate', 'thumb', 'caption', 'nude'])
+CacheStates = namedtuple('CacheStates', ['raw', 'meta', 'rotate', 'thumb', 'caption', 'nude'])
 
 LANGUAGE_OPTIONS = ['en', 'zh'] # en for english, ch for chinese
 
@@ -43,7 +43,7 @@ class MediaCenter:
                  show_progress_bar=True,
                  check_rotation=True,
                  check_nude=True,
-                 cache_flags=CacheStates(True,True,True,True,True),
+                 cache_flags=CacheStates(True,True,True,True,True,True),
                  language='en',
                  **kwargs):
         print("Initializing ImageSimilarity...")
@@ -144,6 +144,8 @@ class MediaCenter:
             if not self.cache_flags.raw:
                 self.raw_embedding_cache_manager.clear(f)
                 self.raw_thumbnail_cache_manager.clear(f)
+            if not self.cache_flags.meta:
+                self.meta_tag_cache_manager.clear(f)
             if not self.cache_flags.rotate:
                 self.rotation_tag_cache_manager.clear(f)
             if not self.cache_flags.thumb:
@@ -161,7 +163,7 @@ class MediaCenter:
             if MediaValidator.is_image(path) and MediaValidator.validate(path):
                 with Image.open(image_path) as img:
                     img.load()
-                    MediaValidator.as_720_thumbnail_inplace(img)
+                    MediaOperator.as_720_thumbnail_inplace(img)
                     return img
 
             if MediaValidator.is_video(path) and MediaValidator.validate(path):
@@ -195,8 +197,14 @@ class MediaCenter:
         if not self.check_nude: return {}
         return self.nude_tag_cache_manager.load(image_path)
 
+    def _get_metadata(self, image_path):
+        return self.meta_tag_cache_manager.load(image_path)
+
     def _generate_meta_tag(self, image_path):
-        return mymetadata.PhotoMetadataExtractor.extract(image_poth)
+        meta = mymetadata.PhotoMetadataExtractor.extract(image_path)
+        logger.debug(meta)
+        logger.debug(type(meta))
+        return meta
 
     @global_tracker
     def _generate_rotation_tag(self, image_path):
@@ -216,6 +224,7 @@ class MediaCenter:
     def compute_all_tags(self):
         print("Initializing tags...")
         for fp in tqdm(self.media_fps, desc="Initializing tags", disable=not self.show_progress_bar):
+            _ = self._get_metadata(fp)
             _ = self._get_nude_tag(fp)
             if self.check_rotation:
                 _ = self.rotation_tag_cache_manager.load(fp)
@@ -249,7 +258,7 @@ class MediaCenter:
     @global_tracker
     def _generate_caption_en(self, image_path):
         img = self.thumbnail_cache_manager.load(image_path)
-        return self.cp.caption(img, max_new_tokens=20)
+        return self.cp.caption(img, max_new_tokens=150, num_beams=5)
 
     def cluster(self, *args) -> Cluster:
         self.full_cluster(*args)

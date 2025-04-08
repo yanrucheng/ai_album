@@ -2,10 +2,14 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, Optional, Union
 from pprint import pprint
+import functools
 
 import numpy as np
 import requests
 from xyconvert import wgs2gcj
+
+import logging
+logger = logging.getLogger(__name__)
 
 class GeoProcessor:
     """Handles coordinate conversion and reverse geocoding for China locations"""
@@ -27,10 +31,10 @@ class GeoProcessor:
         """
         wgs_coords = np.array([[lon, lat]])
         gcj_coords = wgs2gcj(wgs_coords)
-        return (gcj_coords[0, 0], gcj_coords[0, 1])
+        return float(gcj_coords[0, 0]), float(gcj_coords[0, 1])
     
-    @functools.lru_cache(maxsize=8192)
     @classmethod
+    @functools.lru_cache(maxsize=8192)
     def reverse_geocode(cls, lon, lat, original_system='wgs84'):
         """
         Perform reverse geocoding with automatic coordinate conversion for China
@@ -68,7 +72,8 @@ class GeoProcessor:
             'location': f"{lon},{lat}",
             'key': cls.amap_api_key,
             'output': 'json',
-            'extensions': 'base'
+            'extensions': 'all',
+            'radius': 1000,
         }
         
         try:
@@ -206,7 +211,7 @@ class PhotoMetadataExtractor:
                     'altitude_meters': altitude_meters,
                     'version': get_attr('GPSVersionID', 'exif')
                 }),
-                'gps_resolved': clean_dict(gps_resolved_d)
+                'gps_resolved': clean_dict(gps_resolved_d),
                 'camera': clean_dict({
                     'make': get_attr('Make', 'tiff'),
                     'model': get_attr('Model', 'tiff'),
