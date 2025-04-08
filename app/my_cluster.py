@@ -11,9 +11,9 @@ logger = logging.getLogger(__name__)
 Cluster = Union[Dict[str, 'Cluster'], Dict[str, List[Any]]] # recursive typing
 
 Path = str
-def copy_file_as_cluster(cluster: Cluster,
+def operate_file_as_cluster(cluster: Cluster,
                          target_path: Path,
-                         operator: Callable[[str], str] = utils.copy_with_meta,
+                         operator: Callable[[str], str],
                          ):
 
     def _copy_files_to_clusters(cluster, target_path, _current_path=""):

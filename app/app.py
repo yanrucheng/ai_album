@@ -1,5 +1,5 @@
 from media_center import MediaCenter
-from my_cluster import copy_file_as_cluster
+from my_cluster import operate_file_as_cluster
 import pprint
 import utils
 from function_tracker import global_tracker
@@ -27,6 +27,7 @@ def app(in_folder, args):
     s.compute_all_tags()
 
     # Clustering images with specified distance levels
+    thumb_cluster = s.thumbnail_cluster(*args.distance_levels)
     cluster = s.full_cluster(*args.distance_levels)
 
     output_path = args.output_path
@@ -37,16 +38,16 @@ def app(in_folder, args):
         pprint.pprint(cluster)
 
     if 'original' in args.output_type:
-        copy_file_as_cluster(cluster, output_path,
-                             operator = s.copy_with_meta_rotate)
+        operate_file_as_cluster(cluster, output_path,
+                                operator = utils.safe_move)
 
     if 'thumbnail' in args.output_type:
-        thumb_cluster = s.thumbnail_cluster(*args.distance_levels)
-        copy_file_as_cluster(thumb_cluster, output_path)
+        operate_file_as_cluster(thumb_cluster, output_path,
+                                operator = utils.copy_with_meta)
 
     if 'link' in args.output_type:
-        copy_file_as_cluster(cluster, output_path,
-                             operator = utils.create_relative_symlink)
+        operate_file_as_cluster(cluster, output_path,
+                                operator = utils.create_relative_symlink)
 
 
 def main():

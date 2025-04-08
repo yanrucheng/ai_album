@@ -283,6 +283,82 @@ def safe_delete(file_path):
 # Example usage
 # create_relative_symlink('/path/to/target', '/path/to/link_folder')
 
+def safe_move(src: PathType, dst: PathType) -> bool:
+    """
+    Safely move a file from src to dst while preserving metadata and avoiding overwrites.
+    If destination exists, automatically appends (1), (2), etc. to the filename.
+    
+    Args:
+        src: Source file path
+        dst: Destination file path
+        
+    Returns:
+        bool: True if operation succeeded, False otherwise
+    """
+    assert src and dst, f'Both src, dst are a must. got src={src}; dst={dst}'
+
+    try:
+        # Validate inputs
+        if not src or not dst:
+            raise ValueError(f'Both src and dst are required. Got src={src}, dst={dst}')
+
+
+        # Convert strings to Path objects and resolve to absolute paths
+        src = Path(src).resolve()
+        dst = Path(dst).resolve()
+
+        dst.mkdir(parents=True, exist_ok=True)
+        dst_name = src.name
+        rel_path = os.path.relpath(src, dst)
+
+        src_path = src
+        dst_path = dst / dst_name
+
+        # Check if source exists
+        if not src.exists():
+            raise FileNotFoundError(f'Source file does not exist: {src}')
+            
+        # Check if source is a file
+        if not src.is_file():
+            raise ValueError(f'Source is not a file: {src}')
+            
+        # Create parent directory if needed
+        dst_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Handle filename collisions
+        if dst_path.exists():
+            base = dst_path.stem
+            ext = dst_path.suffix
+            counter = 1
+            while True:
+                new_name = f"{base} ({counter}){ext}"
+                new_path = dst_path.with_name(new_name)
+                if not new_path.exists():
+                    dst_path = new_path
+                    break
+                counter += 1
+        
+        # First copy with metadata
+        shutil.copy2(src, dst_path)
+        
+        # Handle additional metadata if needed
+        try:
+            inplace_overwrite_meta(src, dst_path)
+        except Exception as meta_error:
+            logger.debug(f'Failed to copy metadata from {src} to {dst_path}: {meta_error}')
+            # The copy succeeded even if metadata failed, so we continue
+            return False
+            
+        # Only remove source if copy succeeded
+        src.unlink()
+        logger.info(f'{src} successfully moved to {dst_path}.')
+        
+        return True
+        
+    except Exception as e:
+        logger.debug(f'Failed to move file from {src} to {dst}: {e}', exc_info=True)
+        return False
+
 def copy_with_meta(src: PathType, dst: PathType) -> bool:
     """
     Safely copy a file from src to dst while preserving metadata.
