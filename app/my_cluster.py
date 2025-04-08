@@ -5,6 +5,9 @@ import os
 import numpy as np
 import utils
 
+import logging
+logger = logging.getLogger(__name__)
+
 Cluster = Union[Dict[str, 'Cluster'], Dict[str, List[Any]]] # recursive typing
 
 Path = str
@@ -126,8 +129,8 @@ class BaseHierarchicalCluster:
         pruned_cluster = self.prune(res_cluster)
 
         # Rename clusters based on intra-cluster similarities.
-        named_cluster = self.name(pruned_cluster)
-        return named_cluster
+        # named_cluster = self.name(pruned_cluster)
+        return pruned_cluster
 
     def recursive_clustering(
         self, current_clusters: Cluster, distance_levels: List[float], level: int
@@ -151,7 +154,7 @@ class BaseHierarchicalCluster:
             return cls.prune(res)
         return {k: cls.prune(v) for k, v in cluster.items()}
 
-    def name(self, cluster: Cluster) -> Cluster:
+    def get_name_for_cluster_node(self, items: List[str]) -> Cluster:
         """
         Name clusters by selecting a representative element based on the
         intra-cluster similarity. This method processes the hierarchical
@@ -176,31 +179,12 @@ class BaseHierarchicalCluster:
                 return items[0]
             return max(items, key=lambda item: average_similarity(item, items))
 
-        def process_dict_for_similarity(d):
-            if isinstance(d, dict):
-                new_dict = {}
-                for key, value in d.items():
-                    processed_value, best = process_dict_for_similarity(value)
-                    new_dict[best] = processed_value
-                return new_dict, select_best_representation(list(new_dict.keys()))
-            elif isinstance(d, list):
-                return d[:], select_best_representation(d)
-            else:
-                return None, None
+        assert not any(isinstance(item, dict) or isinstance(item, list) for item in items), \
+                "you can only name a collection cluster leaf node."
 
-        def rename_to_captions(d):
-            if isinstance(d, dict):
-                res = {}
-                for key, value in d.items():
-                    # Use an external utility to ensure unique names; adjust as needed.
-                    cluster_name = self.obj_to_name(key)
-                    cluster_name = utils.get_unique_key(cluster_name, res)
-                    res[cluster_name] = rename_to_captions(value)
-                return res
-            return d
-
-        processed_for_similarity, _ = process_dict_for_similarity(cluster)
-        return rename_to_captions(processed_for_similarity)
+        obj = select_best_representation(items)
+        cluster_name = self.obj_to_name(obj)
+        return cluster_name
 
 
 class AgglomerativeHierarchicalCluster(BaseHierarchicalCluster):
@@ -237,8 +221,15 @@ class AgglomerativeHierarchicalCluster(BaseHierarchicalCluster):
                 sub_clusters = {}
                 for idx, label in enumerate(clustering.labels_):
                     sub_clusters.setdefault(label, []).append(children[idx])
+
+                named_clusters = {}
+                for cluster in sub_clusters.values():
+                    cluster_name = self.get_name_for_cluster_node([x for x, _ in cluster])
+                    unique_cluster_name = utils.get_unique_key(cluster_name, named_clusters)
+                    named_clusters[unique_cluster_name] = cluster
+
                 new_c[cluster_id] = self.recursive_clustering(
-                    sub_clusters, distance_levels, level + 1
+                    named_clusters, distance_levels, level + 1
                 )
             elif len(children) == 1:
                 fp, _ = children[0]
@@ -295,14 +286,29 @@ class LinearHierarchicalCluster(BaseHierarchicalCluster):
                     else:
                         clusters.append(current_cluster)
                         current_cluster = [children_sorted[i]]
+
                 clusters.append(current_cluster)
                 # Format as a dict for further recursion.
-                sub_clusters = {i: cluster for i, cluster in enumerate(clusters)}
+
+                sub_clusters = {}
+                for idx, cluster in enumerate(clusters, 1):
+                    cluster_name = self.get_name_for_cluster_node([x for x, _ in cluster])
+
+                    # add idx formatter
+                    if '{idx}' in cluster_name:
+                        # logger.debug(cluster_name)
+                        cluster_name = cluster_name.format(idx=idx)
+
+                    unique_cluster_name = utils.get_unique_key(cluster_name, sub_clusters)
+                    sub_clusters[unique_cluster_name] = cluster
+
                 new_c[cluster_id] = self.recursive_clustering(
                     sub_clusters, distance_levels, level + 1
                 )
-            elif len(children_sorted) == 1:
-                fp, _ = children_sorted[0]
+            elif len(children) == 1:
+                fp, _ = children[0]
                 new_c[cluster_id] = [fp]
 
         return new_c
+
+

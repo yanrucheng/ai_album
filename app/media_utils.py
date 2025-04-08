@@ -61,7 +61,7 @@ class MediaValidator(utils.Singleton):
                     cap.release()
                 return True
             else:
-                logger.info(f"Unsupported file format: {path}")
+                logger.debug(f"Unsupported file format: {path}")
         except (IOError, SyntaxError) as e:
             logger.error(f"Invalid media file: {path}. Error: {e}")
         return False

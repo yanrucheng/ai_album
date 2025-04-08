@@ -4,6 +4,7 @@ import numpy as np
 from PIL import Image
 from pillow_heif import register_heif_opener
 register_heif_opener()
+import pprint
 
 from tqdm import tqdm
 
@@ -16,7 +17,7 @@ from utils import MyPath, get_mode
 from media_utils import MediaValidator, MediaOperator
 from media_libs import MediaOrganizer
 
-from my_cluster import AgglomerativeHierarchicalCluster, LinearHierarchicalCluster
+from my_cluster import LinearHierarchicalCluster
 from my_cluster import ClusterKeyProcessor, ClusterLeafProcessor
 from my_cluster import Cluster
 
@@ -25,6 +26,9 @@ from functools import lru_cache
 from function_tracker import global_tracker
 import utils
 import re
+
+import logging
+logger = logging.getLogger(__name__)
 
 from collections import namedtuple
 CacheStates = namedtuple('CacheStates', ['raw', 'rotate', 'thumb', 'caption', 'nude'])
@@ -113,11 +117,16 @@ class MediaCenter:
         #         embedding_func = self.embedding_cache_manager.load,
         #         similarity_func = self.similarity_model.similarity_func,
         #         obj_to_name = self.path_to_folder_name)
+        self.date_cluster = LinearHierarchicalCluster(
+                embedding_func = lambda x: MyPath(x).date,
+                similarity_func = lambda x,y: 0 if x != y else np.inf,
+                sort_key_func = lambda x: MyPath(x).date,
+                obj_to_name = lambda x: MyPath(x).date)
         self.image_cluster = LinearHierarchicalCluster(
-                 embedding_func = self.embedding_cache_manager.load,
-                 similarity_func = self.similarity_model.similarity_func,
-                 sort_key_func = lambda x: MyPath(x).timestamp,
-                 obj_to_name = self.path_to_folder_name)
+                embedding_func = self.embedding_cache_manager.load,
+                similarity_func = self.similarity_model.similarity_func,
+                sort_key_func = lambda x: MyPath(x).timestamp,
+                obj_to_name = self.path_to_folder_name)
         self._initialize()
 
     @property
@@ -239,15 +248,15 @@ class MediaCenter:
     @lru_cache(maxsize=64)
     def bundle_cluster(self, *distance_levels) -> Cluster:
         # use time to cluster
-        # distance_levels = [] means if 1 photos are taken
-        # longer than 20 min = 1200 seconds. they are not in a group
         raw = {0: self.media_fps}
-        # c_time = self.time_cluster.cluster( raw, [1200])
-        c_named = self.image_cluster.cluster( raw, distance_levels,)
-        c_named_formatted = ClusterKeyProcessor.name(c_named,
-                self._generate_cluster_name_formatter)
 
-        return c_named_formatted
+        # group by date
+        c_date = self.date_cluster.cluster(raw, [1])
+
+        # distance_levels = [] means if 1 photos are taken
+        c_named = self.image_cluster.cluster( c_date, distance_levels,)
+
+        return c_named
 
     def full_cluster(self, *args) -> Cluster:
         c_full = ClusterLeafProcessor.process(
@@ -275,7 +284,8 @@ class MediaCenter:
         caption = re.sub(r'[\u3000-\u303F\uff01-\uffee]|[^\w\s]', '', caption)
 
         folder_name = '-'.join(x.title() for x in caption.split())
-        return folder_name
+        indexed_folder_name = '{idx}-' + folder_name
+        return indexed_folder_name
 
     def shorten_caption(self, caption):
         caption = caption.replace(' and ', ' & ')
