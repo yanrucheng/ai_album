@@ -20,6 +20,7 @@ from media_libs import MediaOrganizer
 from my_cluster import LinearHierarchicalCluster
 from my_cluster import ClusterKeyProcessor, ClusterLeafProcessor
 from my_cluster import Cluster
+import mymetadata
 
 from functools import lru_cache
 
@@ -78,6 +79,11 @@ class MediaCenter:
         self.raw_embedding_cache_manager = CacheManager(target_path=folder_path,
                                                     generate_func=self._generate_raw_embedding,
                                                     format_str="{base}_raw_emb_{file_hash}.npy")
+
+        ## level 2: metadata extraction
+        self.meta_tag_cache_manager =  CacheManager(target_path=folder_path,
+                                                    generate_func=self._generate_meta_tag,
+                                                    format_str="{base}_meta_{file_hash}.yml")
 
         ## level 2: rotation detect
         self.rotation_tag_cache_manager = CacheManager(target_path=folder_path,
@@ -188,6 +194,9 @@ class MediaCenter:
     def _get_nude_tag(self, image_path):
         if not self.check_nude: return {}
         return self.nude_tag_cache_manager.load(image_path)
+
+    def _generate_meta_tag(self, image_path):
+        return mymetadata.PhotoMetadataExtractor.extract(image_poth)
 
     @global_tracker
     def _generate_rotation_tag(self, image_path):

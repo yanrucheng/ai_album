@@ -10,4 +10,5 @@ similarities==1.1.6
 tqdm==4.66.1
 PyYAML==6.0.1
 nudenet==3.0.8
+xyconvert==0.1.2
 # uform==1.0.3

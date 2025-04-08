@@ -1,0 +1,285 @@
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from typing import Dict, Optional, Union
+from pprint import pprint
+
+import numpy as np
+import requests
+from xyconvert import wgs2gcj
+
+class GeoProcessor:
+    """Handles coordinate conversion and reverse geocoding for China locations"""
+    
+    amap_api_key = '1861034270ab66c3be10f478330466fb'
+    amap_endpoint = "https://restapi.amap.com/v3/geocode/regeo"
+    
+    @staticmethod
+    def wgs84_to_gcj02(lon, lat):
+        """
+        Convert WGS-84 coordinates to GCJ-02 (Mars coordinates)
+        
+        Args:
+            lon (float): Longitude in WGS-84
+            lat (float): Latitude in WGS-84
+            
+        Returns:
+            tuple: (gcj_lon, gcj_lat) - Converted GCJ-02 coordinates
+        """
+        wgs_coords = np.array([[lon, lat]])
+        gcj_coords = wgs2gcj(wgs_coords)
+        return (gcj_coords[0, 0], gcj_coords[0, 1])
+    
+    @functools.lru_cache(maxsize=8192)
+    @classmethod
+    def reverse_geocode(cls, lon, lat, original_system='wgs84'):
+        """
+        Perform reverse geocoding with automatic coordinate conversion for China
+        
+        Args:
+            lon (float): Longitude
+            lat (float): Latitude
+            original_system (str): Coordinate system of input ('wgs84' or 'gcj02')
+            
+        Returns:
+            dict: Geocoding result with additional metadata
+        """
+        # First try with original coordinates
+        result = cls._call_amap_api(lon, lat)
+        
+        # If in China and using WGS-84, try again with converted coordinates
+        if (result.get('regeocode', {}).get('addressComponent', {}).get('country') == '中国' 
+            and original_system == 'wgs84'):
+            gcj_lon, gcj_lat = cls.wgs84_to_gcj02(lon, lat)
+            converted_result = cls._call_amap_api(gcj_lon, gcj_lat)
+            
+            # Add conversion metadata
+            converted_result['conversion_metadata'] = {
+                'original_coords': {'lon': lon, 'lat': lat, 'system': 'wgs84'},
+                'converted_coords': {'lon': gcj_lon, 'lat': gcj_lat, 'system': 'gcj02'}
+            }
+            return converted_result
+            
+        return result
+    
+    @classmethod
+    def _call_amap_api(cls, lon, lat):
+        """Internal method to call AMap reverse geocoding API"""
+        params = {
+            'location': f"{lon},{lat}",
+            'key': cls.amap_api_key,
+            'output': 'json',
+            'extensions': 'base'
+        }
+        
+        try:
+            response = requests.get(cls.amap_endpoint, params=params)
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get('status') != '1':
+                raise ValueError(f"API error: {data.get('info', 'Unknown error')}")
+                
+            return data
+        except requests.exceptions.RequestException as e:
+            return {
+                'status': '0',
+                'info': f"Request failed: {str(e)}",
+                'infocode': '500'
+            }
+
+class PhotoMetadataExtractor:
+    """Extracts and processes metadata from photo files and their associated XMP sidecars."""
+    
+    _namespaces = {
+        'rdf': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
+        'exif': 'http://ns.adobe.com/exif/1.0/',
+        'tiff': 'http://ns.adobe.com/tiff/1.0/',
+        'aux': 'http://ns.adobe.com/exif/1.0/aux/',
+        'photoshop': 'http://ns.adobe.com/photoshop/1.0/',
+        'dc': 'http://purl.org/dc/elements/1.1/',  # Added missing namespace
+        'xmp': 'http://ns.adobe.com/xap/1.0/',
+        'xmpMM': 'http://ns.adobe.com/xap/1.0/mm/'
+    }
+    
+    @staticmethod
+    def _dms_to_decimal(gps_str: str) -> Optional[float]:
+        """Convert GPS coordinate string to decimal degrees."""
+        if not gps_str:
+            return None
+        
+        try:
+            direction = gps_str[-1]
+            parts = gps_str[:-1].replace(',', ' ').split()
+            
+            if len(parts) != 2:
+                return None
+            
+            degrees = float(parts[0])
+            minutes = float(parts[1])
+            decimal = degrees + (minutes / 60)
+            
+            return -decimal if direction in ['S', 'W'] else decimal
+        except (ValueError, AttributeError):
+            return None
+    
+    @staticmethod
+    def _find_xmp_file(image_path: Union[str, Path]) -> Optional[Path]:
+        """Find associated XMP file for the given image path."""
+        path = Path(image_path)
+        
+        # First try same filename with .xmp extension
+        possible_xmp = path.with_suffix('.xmp')
+        if possible_xmp.exists():
+            return possible_xmp
+        
+        # Then try alternative pattern (filename.xmp for filename.ext)
+        possible_xmp = path.parent / f"{path.stem}.xmp"
+        return possible_xmp if possible_xmp.exists() else None
+    
+    @classmethod
+    def _extract_from_xmp(cls, xmp_content: str) -> Dict[str, Dict[str, Union[str, float, int]]]:
+        """Core metadata extraction from XMP content."""
+        try:
+            root = ET.fromstring(xmp_content)
+            description = root.find('.//rdf:Description', {'rdf': cls._namespaces['rdf']})
+            if description is None:
+                return {}
+            
+            def get_attr(attr: str, namespace: str = '') -> str:
+                """Helper to safely get attributes with namespace handling."""
+                if namespace and namespace not in cls._namespaces:
+                    return ''
+                
+                full_attr = f'{{{cls._namespaces[namespace]}}}{attr}' if namespace else attr
+                return description.get(full_attr, '').strip()
+            
+            # GPS Data
+            gps_lat = get_attr('GPSLatitude', 'exif')
+            gps_lon = get_attr('GPSLongitude', 'exif')
+            gps_lat_dec = cls._dms_to_decimal(gps_lat)
+            gps_lon_dec = cls._dms_to_decimal(gps_lon)
+
+            gps_resolved_d = {}
+            if gps_lat_dec is not None and gps_lat_dec is not None:
+                gps_resolved_d = GeoProcessor().reverse_geocode(gps_lon_dec, gps_lat_dec)
+            
+            # Process altitude
+            altitude_str = get_attr('GPSAltitude', 'exif')
+            altitude_meters = None
+            if altitude_str and '/' in altitude_str:
+                try:
+                    numerator, denominator = map(float, altitude_str.split('/'))
+                    altitude_meters = numerator / denominator
+                except (ValueError, ZeroDivisionError):
+                    pass
+            
+            # Camera Data
+            focal_length = get_attr('FocalLength', 'exif')
+            focal_length_mm = None
+            if focal_length and '/' in focal_length:
+                try:
+                    numerator, denominator = map(float, focal_length.split('/'))
+                    focal_length_mm = numerator / denominator
+                except (ValueError, ZeroDivisionError):
+                    pass
+            
+            aperture = get_attr('FNumber', 'exif')
+            aperture_value = None
+            if aperture and '/' in aperture:
+                try:
+                    numerator, denominator = map(float, aperture.split('/'))
+                    aperture_value = numerator / denominator
+                except (ValueError, ZeroDivisionError):
+                    pass
+            
+            # Clean empty values from the results
+            def clean_dict(d: dict) -> dict:
+                return {k: v for k, v in d.items() if v not in [None, '', 0]}
+            
+            return {
+                'gps': clean_dict({
+                    'latitude': gps_lat,
+                    'longitude': gps_lon,
+                    'latitude_dec': gps_lat_dec,
+                    'longitude_dec': gps_lon_dec,
+                    'altitude': altitude_str,
+                    'altitude_meters': altitude_meters,
+                    'version': get_attr('GPSVersionID', 'exif')
+                }),
+                'gps_resolved': clean_dict(gps_resolved_d)
+                'camera': clean_dict({
+                    'make': get_attr('Make', 'tiff'),
+                    'model': get_attr('Model', 'tiff'),
+                    'serial': get_attr('SerialNumber', 'aux'),
+                    'firmware': get_attr('Firmware', 'aux')
+                }),
+                'lens': clean_dict({
+                    'model': get_attr('Lens', 'aux') or get_attr('LensModel', 'exif'),
+                    'serial': get_attr('LensSerialNumber', 'aux'),
+                    'focal_length': focal_length,
+                    'focal_length_mm': focal_length_mm,
+                    'aperture': aperture,
+                    'aperture_value': aperture_value
+                }),
+                'photo': clean_dict({
+                    'width': int(get_attr('ImageWidth', 'tiff') or 0),
+                    'height': int(get_attr('ImageLength', 'tiff') or 0),
+                    'create_date': get_attr('DateTimeOriginal', 'exif'),
+                    'exposure': get_attr('ExposureTime', 'exif'),
+                    'iso': int(get_attr('ISOSpeedRatings', 'exif') or 0),
+                    'orientation': int(get_attr('Orientation', 'tiff') or 0),
+                    'file_format': get_attr('format', 'dc')
+                })
+            }
+        except ET.ParseError as e:
+            print(f"Error parsing XMP: {e}")
+            return {}
+    
+    @classmethod
+    def extract(cls, file_path: Union[str, Path]) -> Dict[str, Dict[str, Union[str, float, int]]]:
+        """
+        Extract metadata from image file or its XMP sidecar.
+        
+        Args:
+            file_path: Path to image file (CR3, JPG, etc.) or XMP file
+            
+        Returns:
+            Dictionary containing categorized metadata
+        """
+        path = Path(file_path)
+        
+        # If input is already an XMP file
+        if path.suffix.lower() == '.xmp':
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    return cls._extract_from_xmp(f.read())
+            except (IOError, OSError) as e:
+                print(f"Error reading XMP file: {e}")
+                return {}
+        
+        # For image files, find associated XMP
+        xmp_path = cls._find_xmp_file(path)
+        if xmp_path is None:
+            print(f"No XMP sidecar found for {path}")
+            return {}
+        
+        try:
+            with open(xmp_path, 'r', encoding='utf-8') as f:
+                return cls._extract_from_xmp(f.read())
+        except (IOError, OSError) as e:
+            print(f"Error reading XMP file: {e}")
+            return {}
+
+
+# Example usage
+if __name__ == "__main__":
+    
+    # Can work with either:
+    metadata = PhotoMetadataExtractor.extract("./dev_samples/test-sample-cr3/4H4A3790.xmp")
+    pprint(metadata)
+    
+    metadata = PhotoMetadataExtractor.extract("./dev_samples/test-sample-cr3/4H4A3790.cr3")
+    pprint(metadata)
+
+    metadata = PhotoMetadataExtractor.extract("./dev_samples/test-sample-cr3/4H4A37901.cr3")
+    pprint(metadata)

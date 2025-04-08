@@ -1,4 +1,7 @@
--f https://download.pytorch.org/whl/torch_stable.html
+--index-url https://mirrors.aliyun.com/pypi/simple/  # Primary (fastest in China)
+--extra-index-url https://pypi.tuna.tsinghua.edu.cn/simple/  # Backup mirror
+--extra-index-url https://pypi.org/simple/  # Fallback to official PyPI
+-f https://download.pytorch.org/whl/torch_stable.html  # PyTorch wheels
 aiohttp==3.9.1
 aiosignal==1.3.1
 altair==5.2.0
@@ -110,6 +113,7 @@ pydantic_core==2.14.6
 pydeck==0.8.1b0
 Pygments==2.17.2
 pyparsing==3.1.1
+pyproj==3.5.0
 python-dateutil==2.8.2
 python-magic==0.4.27
 python-slugify==8.0.1
@@ -168,7 +172,6 @@ weasel==0.3.4
 webdataset==0.2.86
 webencodings==0.5.1
 xxhash==3.4.1
+xyconvert==0.1.2
 yarl==1.9.4
 zipp==3.17.0
-# uform==1.0.3
-# tokenizers==0.15.0
