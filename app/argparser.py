@@ -52,14 +52,14 @@ def parse_arguments():
     parser.add_argument('--debug', action='store_true',
                         help='Enable function tracking timer')
 
-    parser.add_argument("-cf", "--cache-flags", type=validate_cache_arg, default = '111111',
+    parser.add_argument("-cf", "--cache-flags", type=validate_cache_arg, default = '1111111',
                         help=textwrap.dedent('''\
                             Control cache settings using a binary string. Each digit represents a cache (A, B, C, D, E) in order.
 
                             Pipeline structure:
                               -> B
                              /
-                            A -> C -> D -> E
+                            A -> C -> D -> E -> G
                              \\
                               -> F
 
@@ -70,17 +70,18 @@ def parse_arguments():
                             - D: thumbnail cache
                             - E: caption cache
                             - F: nude detection tag cache
+                            - G: title generation cache
 
                             '1' turns a cache on, and '0' turns it off.
                             Turning off a cache also turns off all subsequent caches in the pipeline (A off -> B, C, D off).
                             However, E is independent; turning off C does not affect E.
 
                             Examples:
-                            - '000000' turns all cache off
-                            - '010000' works as '11000' because the cache of B masks the nonexistence of A
-                            - '101001' turns caches A, C, and E on. B and D are off.
-                            - '010100' actually works as '11010' due to pipeline dependencies.
-                            - '111010' remains as it is since D and E are independent.'''))
+                            - '0000000' turns all cache off
+                            - '0100000' works as '11000' because the cache of B masks the nonexistence of A
+                            - '1010010' turns caches A, C, and E on. B and D are off.
+                            - '0101000' actually works as '11010' due to pipeline dependencies.
+                            - '1110100' remains as it is since D and E are independent.'''))
 
 
     args = parser.parse_args()
@@ -105,7 +106,8 @@ def parse_arguments():
         rotate = cs[2] == '1',
         thumb = cs[3] == '1',
         caption = cs[4] == '1',
-        nude = cs[5] == '1'
+        nude = cs[5] == '1',
+        title = cs[6] == '1',
     )
 
     # Print a summary of the inputs using textwrap for better formatting
@@ -132,8 +134,8 @@ def parse_arguments():
     return args
 
 def validate_cache_arg(cache_flags_str):
-    if len(cache_flags_str) != 6 or not all(char in '01' for char in cache_flags_str):
-        raise argparse.ArgumentTypeError(f"Cache flag must be a binary string of length 6, e.g., '101010'. got: {cache_flags_str}")
+    if len(cache_flags_str) != 7 or not all(char in '01' for char in cache_flags_str):
+        raise argparse.ArgumentTypeError(f"Cache flag must be a binary string of length 7, e.g., '1010100'. got: {cache_flags_str}")
     return cache_flags_str
 
 def validate_output_folder(path):

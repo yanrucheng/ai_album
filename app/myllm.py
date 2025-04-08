@@ -1,10 +1,16 @@
 from utils import Singleton
 import utils
+import json
 from PIL import Image
 from lavis.models import load_model_and_preprocess
+import llm_api
+from typing import List, Dict
 
 import torch
 from nudenet import NudeDetector
+
+import logging
+logger = logging.getLogger(__name__)
 
 class SimilarityCalculatorABC(Singleton):
     def __init__(self):
@@ -43,6 +49,52 @@ class TextSimilarityCalculator(SimilarityCalculatorABC):
         print('Loading ', model_name)
         self.model = BertSimilarity(model_name_or_path=model_name)
 
+class ImageTitler:
+    def __init__(self):
+        self.client = llm_api.LLMClient()
+
+    def get_title(self, caption: str, metadata: Dict, lang='zh'):
+
+        assert lang == 'zh', 'only chinese title is supported now'
+
+        prompt = f"""
+        Generate a concise, descriptive title (12 Chinese characters or less) for a photo based on:
+        
+        1. Caption: {caption}
+        2. Metadata: {json.dumps(metadata)}
+        
+        Title should:
+        - Be poetic yet descriptive
+        - Include key elements from caption
+        - Reference location if distinctive
+        - Consider season/time if available
+        - Be in Chinese
+        - Never exceed 12 characters
+        - Avoid generic terms like "photo" or "image"
+        
+        Example good titles:
+        - 玉渊潭樱花季
+        - 故宫角楼落日
+        - 胡同里的童年
+        """
+
+        content = self.client.query(prompt, response_format={
+            'type': 'json_schema',
+            "json_schema": {
+                "name": "math_response",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "title": { "type": "string" },
+                    },
+                    "required": [ "title", ],
+                    "additionalProperties": False
+                }
+            }
+            })
+
+        return content['title']
 
 class LavisModel:
     def __init__(self):

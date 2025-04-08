@@ -32,7 +32,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from collections import namedtuple
-CacheStates = namedtuple('CacheStates', ['raw', 'meta', 'rotate', 'thumb', 'caption', 'nude'])
+CacheStates = namedtuple('CacheStates', ['raw', 'meta', 'rotate', 'thumb', 'caption', 'nude', 'title'])
 
 LANGUAGE_OPTIONS = ['en', 'zh'] # en for english, ch for chinese
 
@@ -43,7 +43,7 @@ class MediaCenter:
                  show_progress_bar=True,
                  check_rotation=True,
                  check_nude=True,
-                 cache_flags=CacheStates(True,True,True,True,True,True),
+                 cache_flags=CacheStates(True,True,True,True,True,True,True),
                  language='en',
                  **kwargs):
         print("Initializing ImageSimilarity...")
@@ -65,6 +65,7 @@ class MediaCenter:
         self.video_mng = VideoManager(folder_path, show_progress_bar)
         self.cp = myllm.ImageCaptioner()
         self.tl = myllm.MyTranslator()
+        self.titler = myllm.ImageTitler()
 
         self.mq = MediaQuestionare()
         self.mt = myllm.ImageTextMatcher()
@@ -110,6 +111,10 @@ class MediaCenter:
         self.caption_zh_cache_manager   = CacheManager(target_path=folder_path,
                                                     generate_func=self._generate_caption_zh,
                                                     format_str="{base}_caption_zh_{file_hash}.txt")
+        ## lavel 5a: title generation
+        self.title_zh_cache_manager   = CacheManager(target_path=folder_path,
+                                                    generate_func=self._generate_title_zh,
+                                                    format_str="{base}_title_zh_{file_hash}.txt")
 
         self._invalidate_cache()
 
@@ -156,6 +161,8 @@ class MediaCenter:
                 self.caption_zh_cache_manager.clear(f)
             if not self.cache_flags.nude:
                 self.nude_tag_cache_manager.clear(f)
+            if not self.cache_flags.title:
+                self.title_zh_cache_manager.clear(f)
 
     @global_tracker
     def _compute_raw_thumbnail(self, image_path):
@@ -232,6 +239,7 @@ class MediaCenter:
         for fp in tqdm(self.media_fps, desc="Initializing tags", disable=not self.show_progress_bar):
             _ = self._get_metadata(fp)
             _ = self._get_nude_tag(fp)
+            _ = self._get_title(fp)
             if self.check_rotation:
                 # if xmp contains rotation info then no need to compute
                 _ = self._get_media_rotation_clockwise_degree(fp)
@@ -278,6 +286,14 @@ class MediaCenter:
                                early_stopping=True     # 提前终止（避免冗余）
                                )
 
+    def _generate_title_zh(self, image_path):
+        caption = self.caption_en_cache_manager.load(image_path)
+        metadata = self.meta_tag_cache_manager.load(image_path)
+        return self.titler.get_title(caption, metadata)
+
+    def _get_title(self, image_path):
+        return self.title_zh_cache_manager.load(image_path)
+
     def cluster(self, *args) -> Cluster:
         self.full_cluster(*args)
 
@@ -314,12 +330,13 @@ class MediaCenter:
         )
 
     def path_to_folder_name(self, image_path):
-        caption = self._get_caption(image_path)
-        caption_short = self.shorten_caption(caption)
-        # remove all chinese/english punctuation
-        caption = re.sub(r'[\u3000-\u303F\uff01-\uffee]|[^\w\s]', '', caption)
+        # caption = self._get_caption(image_path)
+        # caption_short = self.shorten_caption(caption)
+        # # remove all chinese/english punctuation
+        # caption = re.sub(r'[\u3000-\u303F\uff01-\uffee]|[^\w\s]', '', caption)
 
-        folder_name = '-'.join(x.title() for x in caption.split())
+        # folder_name = '-'.join(x.title() for x in caption.split())
+        folder_name = self._get_title(image_path)
         indexed_folder_name = '{idx}-' + folder_name
         return indexed_folder_name
 

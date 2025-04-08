@@ -1,5 +1,4 @@
 import os
-import logging
 from pathlib import Path
 from collections import defaultdict
 from dataclasses import dataclass
@@ -8,6 +7,7 @@ from typing import List, Dict
 from utils import MyPath
 from media_utils import MediaValidator
 
+import logging
 logger = logging.getLogger(__name__)
 
 
