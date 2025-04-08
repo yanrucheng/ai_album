@@ -12,13 +12,13 @@ from video_manager import VideoManager
 import myllm
 from media_questionare import MediaQuestionare
 from utils import MyPath, get_mode
-from media_manager import MediaManager
-from media_unit import MediaGrouper
+
+from media_utils import MediaValidator, MediaOperator
+from media_libs import MediaOrganizer
 
 from my_cluster import AgglomerativeHierarchicalCluster, LinearHierarchicalCluster
 from my_cluster import ClusterKeyProcessor, ClusterLeafProcessor
 from my_cluster import Cluster
-from my_cluster import media_unit_cluster_to_full_cluster
 
 from functools import lru_cache
 
@@ -55,8 +55,8 @@ class MediaCenter:
 
 
         self.folder_path = folder_path
-        self.mg = MediaGrouper()
-        self.media_fps = MediaManager.get_all_valid_media(folder_path, self.mg)
+        self.mo = MediaOrganizer()
+        self.media_fps = self.mo.get_all_valid_files(folder_path)
         self.video_mng = VideoManager(folder_path, show_progress_bar)
         self.cp = myllm.ImageCaptioner()
         self.tl = myllm.MyTranslator()
@@ -143,13 +143,13 @@ class MediaCenter:
     @global_tracker
     def _compute_raw_thumbnail(self, image_path):
         def compute_thumbnail(path):
-            if MediaManager.is_image(path) and MediaManager.validate(path):
+            if MediaValidator.is_image(path) and MediaValidator.validate(path):
                 with Image.open(image_path) as img:
                     img.load()
-                    MediaManager.as_720_thumbnail_inplace(img)
+                    MediaValidator.as_720_thumbnail_inplace(img)
                     return img
 
-            if MediaManager.is_video(path) and MediaManager.validate(path):
+            if MediaValidator.is_video(path) and MediaValidator.validate(path):
                 return self.video_mng.extract_key_frame(path)
 
             return None
@@ -160,7 +160,7 @@ class MediaCenter:
     def _compute_thumbnail(self, image_path):
         raw_img = self.raw_thumbnail_cache_manager.load(image_path)
         clockwise_degrees = self._get_media_rotation_clockwise_degree(image_path)
-        rotated_img = MediaManager.rotate_image(raw_img, -clockwise_degrees)
+        rotated_img = MediaOperator.rotate_image(raw_img, -clockwise_degrees)
         return rotated_img
 
     @global_tracker
@@ -237,7 +237,7 @@ class MediaCenter:
         self.full_cluster(*args)
 
     @lru_cache(maxsize=64)
-    def unit_cluster(self, *distance_levels) -> Cluster:
+    def bundle_cluster(self, *distance_levels) -> Cluster:
         # use time to cluster
         # distance_levels = [] means if 1 photos are taken
         # longer than 20 min = 1200 seconds. they are not in a group
@@ -251,20 +251,20 @@ class MediaCenter:
 
     def full_cluster(self, *args) -> Cluster:
         c_full = ClusterLeafProcessor.process(
-            self.unit_cluster(*args),
-            lambda x: self.mg.get_unit(x).files,
+            self.bundle_cluster(*args),
+            lambda x: self.mo.get_bundle(x).files,
         )
         return c_full
 
     def thumbnail_cluster(self, *args):
 
         def get_thumbnail_path(path) -> str:
-            if not MediaManager.validate(path):
+            if not MediaValidator.validate(path):
                 return None
             return self.thumbnail_cache_manager.to_cache_path(path)
 
         return ClusterLeafProcessor.process(
-            self.unit_cluster(*args),
+            self.bundle_cluster(*args),
             get_thumbnail_path
         )
 
@@ -313,7 +313,7 @@ class MediaCenter:
     def copy_with_meta_rotate(self, src, dst):
         assert src in self.media_fps, f'src={src} provided are not maintained by MediaCenter (not in self.media_fps). Maybe it is a thumbnail?'
         clockwise_degrees = self._get_media_rotation_clockwise_degree(src)
-        MediaManager.copy_with_meta_rotate(src, dst, clockwise_degrees)
+        MediaOperator.copy_with_meta_rotate(src, dst, clockwise_degrees)
 
 
 

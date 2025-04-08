@@ -1,7 +1,7 @@
 from PIL import Image
 from myllm import VQA, ImageTextMatcher
 from typing import Dict, Callable
-from media_manager import MediaManager
+from media_utils import MediaOperator
 
 sex_poses = [ # accuracy low warning
     'kissing',
@@ -79,7 +79,7 @@ class MediaQuestionare:
         '''
         confidences = {0:0, 90:0, 180:0, 270:0}
         for a in (180, 0, 90, 270):
-            img_ = MediaManager.rotate_image(img, a)
+            img_ = MediaOperator.rotate_image(img, a)
             conf = self.matcher.text_match(img_, 'this photo is upside-down')
             confidences[(180 - a) % 360] = conf
             if conf > 0.5: # early ending threshold

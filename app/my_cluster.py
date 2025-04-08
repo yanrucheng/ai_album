@@ -4,31 +4,8 @@ from utils import MyPath
 import os
 import numpy as np
 import utils
-from media_unit import MediaGrouper
 
 Cluster = Union[Dict[str, 'Cluster'], Dict[str, List[Any]]] # recursive typing
-
-
-def media_unit_cluster_to_full_cluster(cluster: Cluster,
-                                       media_grouper: MediaGrouper
-                                       ):
-    def _traverse(cluster):
-        res = {}
-        for cluster_id, contents in cluster.items():
-            if isinstance(contents, dict):
-                # If the contents are a dictionary, recurse into it
-                res[cluster_id] = _traverse(contents)
-            elif isinstance(contents, list):
-                # If the contents are a list, copy the files into the current cluster directory
-                res[cluster_id] = [
-                    filepath
-                    for fp in contents
-                    for filepath in media_grouper.get_unit(fp).files
-                ]
-        return res
-
-    return _traverse(cluster)
-
 
 Path = str
 def copy_file_as_cluster(cluster: Cluster,

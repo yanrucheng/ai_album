@@ -6,6 +6,8 @@ from function_tracker import global_tracker
 from argparser import parse_arguments, to_default_output_path
 from log_config import set_logger_config
 
+import logging
+logger = logging.getLogger(__name__)
 
 def app(in_folder, args):
     # Usage
