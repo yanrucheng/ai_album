@@ -240,7 +240,11 @@ class ImageTextMatcher(Singleton, LavisModel):
             itm_scores = torch.nn.functional.softmax(itm_output, dim=1)
             return itm_scores[:, 1].item()
 
-class ImageCaptioner(Singleton):
+
+
+
+
+class LocalImageCaptioner(Singleton):
     def __init__(self):
         super().__init__()
         self.blip_large_model = None

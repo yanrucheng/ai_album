@@ -34,8 +34,6 @@ logger = logging.getLogger(__name__)
 from collections import namedtuple
 CacheStates = namedtuple('CacheStates', ['raw', 'meta', 'rotate', 'thumb', 'caption', 'nude', 'title'])
 
-LANGUAGE_OPTIONS = ['en', 'zh'] # en for english, ch for chinese
-
 class MediaCenter:
 
     @global_tracker
@@ -46,7 +44,6 @@ class MediaCenter:
                  check_rotation=True,
                  check_nude=True,
                  cache_flags=CacheStates(True,True,True,True,True,True,True),
-                 language='en',
                  **kwargs):
         print("Initializing ImageSimilarity...")
 
@@ -57,15 +54,13 @@ class MediaCenter:
         self.check_rotation = check_rotation
         self.check_nude = check_nude
         self.cache_flags = cache_flags
-        self.language = language
-        assert language in LANGUAGE_OPTIONS, f'only {LANGUAGE_OPTIONS} are supported. got: {language}'
 
 
         self.folder_path = folder_path
         self.mo = MediaOrganizer()
         self.media_fps = self.mo.get_all_valid_files(folder_path)
         self.video_mng = VideoManager(folder_path, show_progress_bar)
-        self.cp = myllm.ImageCaptioner()
+        self.cp = myllm.LocalImageCaptioner()
         self.tl = myllm.MyTranslator()
         self.titler = myllm.ImageTitler()
 
@@ -107,29 +102,14 @@ class MediaCenter:
                                                     format_str="{base}_nude_{file_hash}.yml")
 
         ## level 4b: caption detection
-        self.caption_en_cache_manager   = CacheManager(target_path=folder_path,
-                                                    generate_func=self._generate_caption_en,
-                                                    format_str="{base}_caption_en_{file_hash}.txt")
-        self.caption_zh_cache_manager   = CacheManager(target_path=folder_path,
-                                                    generate_func=self._generate_caption_zh,
-                                                    format_str="{base}_caption_zh_{file_hash}.txt")
-        ## lavel 5a: title generation
-        self.title_zh_cache_manager   = CacheManager(target_path=folder_path,
-                                                    generate_func=self._generate_title_zh,
-                                                    format_str="{base}_title_zh_{file_hash}.txt")
+        self.caption_cache_manager   = CacheManager(target_path=folder_path,
+                                                    generate_func=self._generate_caption,
+                                                    format_str="{base}_caption_{file_hash}.txt")
 
         self._invalidate_cache()
 
 
         # Initialize similarity cluster
-        # self.time_cluster = AgglomerativeHierarchicalCluster(
-        #         embedding_func = lambda p: np.array([MyPath(p).timestamp]),
-        #         similarity_func = lambda a,b: abs(a - b),
-        #         obj_to_name = lambda p: MyPath(p).date + MyPath(p).time_of_a_day)
-        # self.image_cluster = AgglomerativeHierarchicalCluster(
-        #         embedding_func = self.embedding_cache_manager.load,
-        #         similarity_func = self.similarity_model.similarity_func,
-        #         obj_to_name = self.path_to_folder_name)
         self.date_cluster = LinearHierarchicalCluster(
                 embedding_func = lambda x: MyPath(x).date,
                 similarity_func = lambda x,y: 0 if x != y else np.inf,
@@ -159,12 +139,11 @@ class MediaCenter:
                 self.embedding_cache_manager.clear(f)
                 self.thumbnail_cache_manager.clear(f)
             if not self.cache_flags.caption:
-                self.caption_en_cache_manager.clear(f)
-                self.caption_zh_cache_manager.clear(f)
+                self.caption_cache_manager.clear(f)
             if not self.cache_flags.nude:
                 self.nude_tag_cache_manager.clear(f)
             if not self.cache_flags.title:
-                self.title_zh_cache_manager.clear(f)
+                self.title_cache_manager.clear(f)
 
     @global_tracker
     def _compute_raw_thumbnail(self, image_path):
@@ -256,21 +235,10 @@ class MediaCenter:
         return emb
 
     def _get_caption(self, image_path):
-        if self.language == 'en':
-            return self.caption_en_cache_manager.load(image_path)
-        if self.language == 'zh':
-            return self.caption_zh_cache_manager.load(image_path)
-        return 'langauge not supported'
+        return self.caption_cache_manager.load(image_path)
 
     @global_tracker
-    def _generate_caption_zh(self, image_path):
-        caption_eng = self.caption_en_cache_manager.load(image_path)
-        caption_eng_shorten = self.shorten_caption(caption_eng)
-        caption = self.tl.translate(caption_eng_shorten)
-        return caption
-
-    @global_tracker
-    def _generate_caption_en(self, image_path):
+    def _generate_caption(self, image_path):
         img = self.thumbnail_cache_manager.load(image_path)
         return self.cp.caption(img,
                                max_new_tokens=150,     # 限制生成部分长度（确保在100-150范围内）
@@ -285,13 +253,13 @@ class MediaCenter:
                                early_stopping=True     # 提前终止（避免冗余）
                                )
 
-    def _generate_title_zh(self, image_path):
-        caption = self.caption_en_cache_manager.load(image_path)
+    def _generate_title(self, image_path):
+        caption = self.caption_cache_manager.load(image_path)
         metadata = self.meta_tag_cache_manager.load(image_path)
         return self.titler.get_title(caption, metadata)
 
     def _get_title(self, image_path):
-        return self.title_zh_cache_manager.load(image_path)
+        return self.title_cache_manager.load(image_path)
 
     def cluster(self, *args) -> Cluster:
         self.full_cluster(*args)
@@ -329,48 +297,11 @@ class MediaCenter:
         )
 
     def path_to_folder_name(self, image_path):
-        # caption = self._get_caption(image_path)
-        # caption_short = self.shorten_caption(caption)
-        # # remove all chinese/english punctuation
-        # caption = re.sub(r'[\u3000-\u303F\uff01-\uffee]|[^\w\s]', '', caption)
-
         # folder_name = '-'.join(x.title() for x in caption.split())
         folder_name = self._get_title(image_path)
         indexed_folder_name = '{idx}-' + folder_name
         return indexed_folder_name
 
-    def shorten_caption(self, caption):
-        caption = caption.replace(' and ', ' & ')
-        caption = caption.replace('group of ', '').replace('couple of ', '').replace('pair of ', '')
-        # stem verb
-        caption = utils.replace_ing_words(caption)
-        # remove quantifiers
-        caption = re.sub(r'\b(a|an|some|is|are|be|do)\b', '', caption)
-        # remove multiple space and leading trailing space
-        caption = re.sub(' +', ' ', caption).strip()
-        return caption
-
-    def _generate_cluster_name_formatter(self, file_paths):
-        def labels(file_paths):
-            lbls = set(
-                tag_d['msg']
-                for f in file_paths
-                for tag_d in self._get_nude_tag(f).values()
-                if tag_d['sensitive'])
-            if len(lbls) <= 0:
-                return ''
-            elif len(lbls) <= 3:
-                return f"[{'-'.join(sorted(lbls))}]-"
-            else:
-                return 'NSFW-'
-
-        def date(file_paths):
-            ds = [MyPath(f).date for f in file_paths]
-            return get_mode(ds)
-
-        label = labels(file_paths)
-        date = date(file_paths)
-        return date + '-' + label + '{key}'
 
     def copy_with_meta_rotate(self, src, dst):
         assert src in self.media_fps, f'src={src} provided are not maintained by MediaCenter (not in self.media_fps). Maybe it is a thumbnail?'
