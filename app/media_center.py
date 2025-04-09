@@ -301,10 +301,18 @@ class MediaCenter:
         )
 
     def path_to_folder_name(self, image_path):
+
+        def remove_punctuation(name):
+            to_remove = '，。？'
+            for c in to_remove:
+                name = name.replace(c, '')
+            return name
+
         # folder_name = '-'.join(x.title() for x in caption.split())
         folder_name = self._get_title(image_path)
         indexed_folder_name = '{idx}-' + folder_name
-        return indexed_folder_name
+        cleaned_folder_name = remove_punctuation(indexed_folder_name)
+        return cleaned_folder_name
 
 
     def copy_with_meta_rotate(self, src, dst):

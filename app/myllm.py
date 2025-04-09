@@ -96,93 +96,133 @@ class TextSimilarityCalculator(SimilarityCalculatorABC):
 
 
 def get_photo_info(metadata):
+    if metadata is None or not isinstance(metadata, dict):
+        return ''
 
-    if metadata is None: return ''
-
-    # 1. Time in Chinese format
-    create_date = metadata['photo']['create_date']
-    time_part = create_date.split('T')[1].split('+')[0]  # Get time part
-    hour, minute, _ = time_part.split(':')
-    hour_int = int(hour)
+    info_parts = []
     
-    if hour_int < 12:
-        time_str = f"时间: 上午{hour_int}点{minute}分"
-    else:
-        time_str = f"时间: 下午{hour_int-12 if hour_int > 12 else 12}点{minute}分"
+    # 1. Enhanced Time and Date in Chinese format
+    photo_data = metadata.get('photo', {})
+    create_date = photo_data.get('create_date', '')
+    if create_date:
+        try:
+            # Parse date and time
+            date_part, time_part = create_date.split('T')
+            year, month, day = date_part.split('-')
+            time_part = time_part.split('+')[0]
+            hour, minute, _ = time_part.split(':')
+            hour_int = int(hour)
+            
+            # Format date (Chinese format: 2023年5月15日)
+            date_str = f"{year}年{int(month)}月{int(day)}日"
+            
+            # Determine time period with more detailed descriptions
+            if 4 <= hour_int < 6:
+                period = "清晨"
+            elif 6 <= hour_int < 9:
+                period = "早晨"
+            elif 9 <= hour_int < 11:
+                period = "上午"
+            elif 11 <= hour_int < 13:
+                period = "中午"
+            elif 13 <= hour_int < 17:
+                period = "下午"
+            elif 17 <= hour_int < 19:
+                period = "黄昏"
+            else:
+                period = "夜晚"
+            
+            # Format time (12-hour format)
+            display_hour = hour_int if hour_int <= 12 else hour_int - 12
+            if hour_int == 0:
+                display_hour = 12
+            
+            time_str = f"拍摄时间: {date_str} {period}{display_hour}点{minute}分"
+            info_parts.append(time_str)
+        except (IndexError, ValueError, AttributeError):
+            pass
     
     # 2. Focal length information
-    focal_length = metadata['lens']['focal_length_mm']
-    if focal_length > 150:
-        focal_str = f"镜头类型: 超长焦拍摄 ({focal_length}mm)"
-    elif focal_length > 70:
-        focal_str = f"镜头类型: 长焦拍摄 ({focal_length}mm)"
-    elif focal_length < 30:
-        focal_str = f"镜头类型: 广角拍摄 ({focal_length}mm)"
-    else:
-        focal_str = f"镜头类型: 标准人眼视角 ({focal_length}mm)"
+    lens_data = metadata.get('lens', {})
+    focal_length = lens_data.get('focal_length_mm')
+    if focal_length is not None:
+        if focal_length > 150:
+            focal_str = f"镜头类型: 超长焦拍摄 ({focal_length}mm)"
+        elif focal_length > 70:
+            focal_str = f"镜头类型: 长焦拍摄 ({focal_length}mm)"
+        elif focal_length < 30:
+            focal_str = f"镜头类型: 广角拍摄 ({focal_length}mm)"
+        else:
+            focal_str = f"镜头类型: 标准人眼视角 ({focal_length}mm)"
+        info_parts.append(focal_str)
     
     # 3. Lens and camera info
-    camera_str = f"相机: {metadata['camera']['make']} {metadata['camera']['model']}"
-    lens_str = f"镜头型号: {metadata['lens']['model']}"
+    camera_data = metadata.get('camera', {})
+    if camera_data.get('make') and camera_data.get('model'):
+        info_parts.append(f"相机: {camera_data['make']} {camera_data['model']}")
+    
+    if lens_data.get('model'):
+        info_parts.append(f"镜头型号: {lens_data['model']}")
     
     # 4. Exposure information
-    exposure = metadata['photo']['exposure']
-    numerator, denominator = map(int, exposure.split('/'))
-    exposure_value = numerator / denominator
-    
-    if exposure_value > 1/20:
-        exposure_str = "快门类型: 慢门拍摄"
-    elif exposure_value < 1/1000:
-        exposure_str = "快门类型: 高速快门"
-    else:
-        exposure_str = ""
+    exposure = photo_data.get('exposure')
+    if exposure:
+        try:
+            numerator, denominator = map(int, exposure.split('/'))
+            exposure_value = numerator / denominator
+            
+            if exposure_value > 1/20:
+                info_parts.append("快门类型: 慢门拍摄")
+            elif exposure_value < 1/1000:
+                info_parts.append("快门类型: 高速快门")
+        except (ValueError, ZeroDivisionError):
+            pass
     
     # 5. Aperture information
-    aperture = metadata['lens']['aperture_value']
-    if aperture < 2:
-        aperture_str = "光圈类型: 大光圈拍摄"
-    elif aperture > 4:
-        aperture_str = "光圈类型: 小光圈拍摄"
-    else:
-        aperture_str = ""
+    aperture = lens_data.get('aperture_value')
+    if aperture is not None:
+        if aperture < 2:
+            info_parts.append("光圈类型: 大光圈拍摄")
+        elif aperture > 4:
+            info_parts.append("光圈类型: 小光圈拍摄")
     
     # 6. GPS information - extract all POIs (up to 10)
     gps_info = []
+    gps_resolved = metadata.get('gps_resolved', [])
     
-    if 'gps_resolved' in metadata and isinstance(metadata['gps_resolved'], list):
+    if isinstance(gps_resolved, list) and len(gps_resolved) > 0:
         # Get base location info from first POI
-        if len(metadata['gps_resolved']) > 0:
-            base_poi = metadata['gps_resolved'][0]
+        base_poi = gps_resolved[0]
+        if isinstance(base_poi, dict):
             address = base_poi.get('address', {})
             
             # Build base location string
             location_parts = []
-            if 'road' in address: location_parts.append(address['road'])
-            if 'neighbourhood' in address: location_parts.append(address['neighbourhood'])
-            if 'city' in address: location_parts.append(address['city'])
-            if 'state' in address: location_parts.append(address['state'])
-            if 'country' in address: location_parts.append(address['country'])
+            for key in ['road', 'neighbourhood', 'city', 'state', 'country']:
+                if address.get(key):
+                    location_parts.append(address[key])
             
             if location_parts:
                 gps_info.append(f"基础位置: {'，'.join(location_parts)}")
             
-            if 'display_name' in base_poi:
+            if base_poi.get('display_name'):
                 gps_info.append(f"详细地址: {base_poi['display_name']}")
         
         # Process all POIs (up to 10)
-        poi_count = min(10, len(metadata['gps_resolved']))
+        poi_count = min(10, len(gps_resolved))
         if poi_count > 0:
             gps_info.append("\n附近地点:")
             
             for i in range(poi_count):
-                poi = metadata['gps_resolved'][i]
+                poi = gps_resolved[i]
+                if not isinstance(poi, dict):
+                    continue
+                    
                 poi_entry = []
                 
                 # POI basic info
-                if 'name' in poi:
-                    poi_entry.append(f"{i+1}. {poi['name']}")
-                else:
-                    poi_entry.append(f"{i+1}. 未命名地点")
+                poi_name = poi.get('name', '未命名地点')
+                poi_entry.append(f"{i+1}. {poi_name}")
                 
                 # Distance
                 if 'distance' in poi:
@@ -196,30 +236,21 @@ def get_photo_info(metadata):
                 # Address components
                 address = poi.get('address', {})
                 address_parts = []
-                if 'road' in address: address_parts.append(address['road'])
-                if 'neighbourhood' in address: address_parts.append(address['neighbourhood'])
+                for key in ['road', 'neighbourhood']:
+                    if address.get(key):
+                        address_parts.append(address[key])
                 
                 if address_parts:
                     poi_entry.append(f"位置: {'，'.join(address_parts)}")
                 
                 gps_info.append(" | ".join(poi_entry))
     
-    # Compile all information
-    info_parts = [
-        time_str,
-        focal_str,
-        camera_str,
-        lens_str,
-        exposure_str,
-        aperture_str,
-        *gps_info
-    ]
+    info_parts.extend(gps_info)
     
     # Format as a nicely indented string with Chinese keys
     result = "\n".join(filter(None, info_parts))
     
     return result
-
 class ImageTitler:
     def __init__(self):
         self.client = llm_api.LLMClient()
@@ -246,10 +277,11 @@ class ImageTitler:
         - Be poetic yet descriptive
         - Include key elements from caption
         - Reference location if distinctive
-        - Consider season/time if available
+        - Consider season/time if available, when mentioning season be very careful to check with date instead of purely based on image
         - Be in Chinese
         - Not exceed 15 chinese characters
         - Avoid generic terms like "photo" or "image"
+        - Avoid ，。space, use - & when necessary
         
         Example good titles:
         - 玉渊潭樱花季的午后
@@ -364,14 +396,17 @@ class RemoteImageLLMGen:
         - Be poetic yet descriptive
         - Include key elements from caption
         - Reference location if distinctive
-        - Consider season/time if available
+        - Consider season/time if available, when mentioning season be very careful to check with date instead of purely based on image
         - Be in Chinese
         - Not exceed 15 chinese characters
         - Avoid generic terms like "photo" or "image"
-        - Avoid punctuation
+        - Avoid ，。space, use - & when necessary
 
         Caption should 
         - Be detailed about the image and focus on the main part then the other details.
+        - Reference location if distinctive
+        - Consider season/time if available
+        - Be in Chinese
         
         # Example good titles:
         - 玉渊潭樱花季的午后
