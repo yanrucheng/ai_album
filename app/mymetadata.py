@@ -1,6 +1,7 @@
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Union, Tuple
+from enum import Enum
 from pprint import pprint
 import functools
 
@@ -11,86 +12,146 @@ from xyconvert import wgs2gcj
 import logging
 logger = logging.getLogger(__name__)
 
+
+class GeoAPIProvider(Enum):
+    """Supported geocoding API providers"""
+    AMAP = 'amap'          # Requires GCJ-02 coordinates
+    LOCATIONIQ = 'locationiq'  # Uses WGS-84 coordinates
+    # Add more providers as needed
+
 class GeoProcessor:
-    """Handles coordinate conversion and reverse geocoding for China locations"""
+    """Handles reverse geocoding with support for multiple APIs"""
     
-    amap_api_key = '1861034270ab66c3be10f478330466fb'
-    amap_endpoint = "https://restapi.amap.com/v3/geocode/regeo"
+    # API configurations - each with their specific parameter formats
+    API_CONFIG = {
+        GeoAPIProvider.AMAP: {
+            'endpoint': "https://restapi.amap.com/v3/geocode/regeo",
+            'key': '1861034270ab66c3be10f478330466fb',
+            'params': {
+                'output': 'json',
+                'extensions': 'all',
+                'radius': 1000,
+            },
+            'coord_format': '{lon},{lat}',  # AMap takes "lon,lat" string
+            'requires_gcj02': True  # AMap needs Mars coordinates
+        },
+        GeoAPIProvider.LOCATIONIQ: {
+            'endpoint': "https://us1.locationiq.com/v1/nearby",
+            'key': 'pk.640a955650dce81e3442baa40151d0a6',
+            'params': {
+                'format': 'json',
+                'accept-language': 'zh',
+                'radius': 1000,
+            },
+            'coord_format': 'separate',  # LocationIQ takes separate lat/lon params
+            'requires_gcj02': False  # Uses standard WGS-84
+        }
+    }
     
     @staticmethod
-    def wgs84_to_gcj02(lon, lat):
+    def wgs84_to_gcj02(lon: float, lat: float) -> Tuple[float, float]:
         """
         Convert WGS-84 coordinates to GCJ-02 (Mars coordinates)
         
         Args:
-            lon (float): Longitude in WGS-84
-            lat (float): Latitude in WGS-84
+            lon: Longitude in WGS-84
+            lat: Latitude in WGS-84
             
         Returns:
-            tuple: (gcj_lon, gcj_lat) - Converted GCJ-02 coordinates
+            Tuple of (gcj_lon, gcj_lat) - Converted GCJ-02 coordinates
         """
         wgs_coords = np.array([[lon, lat]])
         gcj_coords = wgs2gcj(wgs_coords)
         return float(gcj_coords[0, 0]), float(gcj_coords[0, 1])
     
     @classmethod
-    @functools.lru_cache(maxsize=8192)
-    def reverse_geocode(cls, lon, lat, original_system='wgs84'):
+    def reverse_geocode(
+        cls,
+        lon: float,
+        lat: float,
+        provider: GeoAPIProvider = GeoAPIProvider.AMAP
+    ) -> Dict:
         """
-        Perform reverse geocoding with automatic coordinate conversion for China
+        Perform reverse geocoding using the specified provider
         
         Args:
-            lon (float): Longitude
-            lat (float): Latitude
-            original_system (str): Coordinate system of input ('wgs84' or 'gcj02')
+            lon: Longitude in WGS-84
+            lat: Latitude in WGS-84
+            provider: Which geocoding API to use
             
         Returns:
-            dict: Geocoding result with additional metadata
+            Dictionary with geocoding results
         """
-        # First try with original coordinates
-        result = cls._call_amap_api(lon, lat)
+        api_config = cls.API_CONFIG[provider]
         
-        # If in China and using WGS-84, try again with converted coordinates
-        if (result.get('regeocode', {}).get('addressComponent', {}).get('country') == '中国' 
-            and original_system == 'wgs84'):
-            gcj_lon, gcj_lat = cls.wgs84_to_gcj02(lon, lat)
-            converted_result = cls._call_amap_api(gcj_lon, gcj_lat)
-            
-            # Add conversion metadata
-            converted_result['conversion_metadata'] = {
+        # Convert coordinates if required by the provider
+        if api_config['requires_gcj02']:
+            lon, lat = cls.wgs84_to_gcj02(lon, lat)
+            conversion_metadata = {
                 'original_coords': {'lon': lon, 'lat': lat, 'system': 'wgs84'},
-                'converted_coords': {'lon': gcj_lon, 'lat': gcj_lat, 'system': 'gcj02'}
+                'converted_coords': {'lon': lon, 'lat': lat, 'system': 'gcj02'}
             }
-            return converted_result
+        else:
+            conversion_metadata = None
+        
+        # Make the API call
+        result = cls._call_api(lon, lat, provider)
+        
+        # Add conversion metadata if applicable
+        if conversion_metadata:
+            result['conversion_metadata'] = conversion_metadata
             
         return result
     
     @classmethod
-    def _call_amap_api(cls, lon, lat):
-        """Internal method to call AMap reverse geocoding API"""
-        params = {
-            'location': f"{lon},{lat}",
-            'key': cls.amap_api_key,
-            'output': 'json',
-            'extensions': 'all',
-            'radius': 1000,
-        }
+    def _call_api(cls, lon: float, lat: float, provider: GeoAPIProvider) -> Dict:
+        """Internal method to call the specified geocoding API"""
+        config = cls.API_CONFIG[provider]
+        params = config['params'].copy()
+        params['key'] = config['key']
+        
+        # Handle different coordinate parameter formats
+        if config['coord_format'] == 'separate':
+            params['lon'] = lon
+            params['lat'] = lat
+        else:
+            params['location'] = config['coord_format'].format(lon=lon, lat=lat)
         
         try:
-            response = requests.get(cls.amap_endpoint, params=params)
+            response = requests.get(config['endpoint'], params=params)
             response.raise_for_status()
             data = response.json()
             
-            if data.get('status') != '1':
-                raise ValueError(f"API error: {data.get('info', 'Unknown error')}")
+            # Provider-specific success checking
+            if provider == GeoAPIProvider.AMAP and data.get('status') != '1':
+                raise ValueError(f"AMap error: {data.get('info', 'Unknown error')}")
+            elif provider == GeoAPIProvider.LOCATIONIQ and 'error' in data:
+                raise ValueError(f"LocationIQ error: {data.get('error', 'Unknown error')}")
                 
             return data
         except requests.exceptions.RequestException as e:
-            return {
-                'status': '0',
-                'info': f"Request failed: {str(e)}",
-                'infocode': '500'
-            }
+            return cls._format_error(provider, str(e))
+    
+    @classmethod
+    def _format_error(cls, provider: GeoAPIProvider, message: str) -> Dict:
+        """Format error response consistently across providers"""
+        base_error = {
+            'status': '0',
+            'error': f"Request failed: {message}",
+            'provider': provider.value
+        }
+        
+        # Add provider-specific error fields
+        if provider == GeoAPIProvider.AMAP:
+            base_error['info'] = base_error.pop('error')
+            base_error['infocode'] = '500'
+        
+        return base_error
+    
+    @classmethod
+    def set_api_key(cls, provider: GeoAPIProvider, key: str):
+        """Update API key for a specific provider"""
+        cls.API_CONFIG[provider]['key'] = key
 
 class PhotoMetadataExtractor:
     """Extracts and processes metadata from photo files and their associated XMP sidecars."""

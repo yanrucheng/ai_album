@@ -53,42 +53,121 @@ class ImageTitler:
     def __init__(self):
         self.client = llm_api.LLMClient()
 
+    def _get_photo_info(metadata):
+        # 1. Time in Chinese format
+        create_date = metadata['photo']['create_date']
+        time_part = create_date.split('T')[1].split('+')[0]  # Get time part
+        hour, minute, _ = time_part.split(':')
+        hour_int = int(hour)
+        
+        if hour_int < 12:
+            time_str = f"时间: 上午{hour_int}点{minute}分"
+        else:
+            time_str = f"时间: 下午{hour_int-12 if hour_int > 12 else 12}点{minute}分"
+        
+        # 2. Focal length information
+        focal_length = metadata['lens']['focal_length_mm']
+        if focal_length > 150:
+            focal_str = f"镜头类型: 超长焦拍摄 ({focal_length}mm)"
+        elif focal_length > 70:
+            focal_str = f"镜头类型: 长焦拍摄 ({focal_length}mm)"
+        elif focal_length < 30:
+            focal_str = f"镜头类型: 广角拍摄 ({focal_length}mm)"
+        else:
+            focal_str = f"镜头类型: 标准人眼视角 ({focal_length}mm)"
+        
+        # 3. Lens and camera info
+        camera_str = f"相机: {metadata['camera']['make']} {metadata['camera']['model']}"
+        lens_str = f"镜头型号: {metadata['lens']['model']}"
+        
+        # 4. Exposure information
+        exposure = metadata['photo']['exposure']
+        numerator, denominator = map(int, exposure.split('/'))
+        exposure_value = numerator / denominator
+        
+        if exposure_value > 1/20:
+            exposure_str = "快门类型: 慢门拍摄"
+        elif exposure_value < 1/1000:
+            exposure_str = "快门类型: 高速快门"
+        else:
+            exposure_str = ""
+        
+        # 5. Aperture information
+        aperture = metadata['lens']['aperture_value']
+        if aperture < 2:
+            aperture_str = "光圈类型: 大光圈拍摄"
+        elif aperture > 4:
+            aperture_str = "光圈类型: 小光圈拍摄"
+        else:
+            aperture_str = ""
+        
+        # 6. GPS information (complete dump)
+        gps_str = f"GPS数据: {json.dumps(metadata['gps_resolved'], ensure_ascii=False)}"
+        
+        # Compile all information
+        info_parts = [
+            time_str,
+            focal_str,
+            camera_str,
+            lens_str,
+            exposure_str,
+            aperture_str,
+            gps_str
+        ]
+        
+        # Format as a nicely indented string with Chinese keys
+        result = "\n".join(filter(None, info_parts))
+        
+        return result
+
     def get_title(self, caption: str, metadata: Dict, lang='zh'):
 
         assert lang == 'zh', 'only chinese title is supported now'
 
+        metadata_str = self._get_photo_info(metadata)
+
         prompt = f"""
-        Generate a concise, descriptive title (12 Chinese characters or less) for a photo based on:
+        # Task
+        Generate a concise, descriptive title (15 Chinese characters or less) for a photo based on:
         
-        1. Caption: {caption}
-        2. Metadata: {json.dumps(metadata)}
+        # Image Caption
+        {caption}
+
+        # Other Image Metadata
+        {metadata_str}
         
+        # Requirement
         Title should:
         - Be poetic yet descriptive
         - Include key elements from caption
         - Reference location if distinctive
         - Consider season/time if available
         - Be in Chinese
-        - Never exceed 12 characters
+        - Not exceed 15 chinese characters
         - Avoid generic terms like "photo" or "image"
         
         Example good titles:
-        - 玉渊潭樱花季
-        - 故宫角楼落日
+        - 玉渊潭樱花季的午后
+        - 故宫角楼落日时分
         - 胡同里的童年
+        - 粉樱白樱大光圈特写
+        - 清晨目黑川沿岸的慢门
+        - 傍晚朝阳公园的长焦人像
         """
 
         content = self.client.query(prompt, response_format={
             'type': 'json_schema',
             "json_schema": {
-                "name": "math_response",
+                "name": "photo_naming",
                 "strict": True,
                 "schema": {
                     "type": "object",
                     "properties": {
                         "title": { "type": "string" },
+                        "longer_title": { "type": "string" },
+                        "photography_profession_description": { "type": "string" },
                     },
-                    "required": [ "title", ],
+                    "required": [ "title", "longer_title", "photography_profession_description" ],
                     "additionalProperties": False
                 }
             }

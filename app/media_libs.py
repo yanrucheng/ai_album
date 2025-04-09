@@ -78,8 +78,7 @@ class MediaOrganizer:
         """
         groups = defaultdict(list)
         for file in self.files:
-            p = Path(file)
-            key = p.parent / p.stem
+            key = Path(file).withsuffix('')
             groups[key].append(file)
         for group in groups.values():
             if len(group) > 1:
@@ -93,7 +92,7 @@ class MediaOrganizer:
         Group files whose timestamps are within threshold_sec seconds of each other.
         """
         file_times = [(file, MyPath(file).timestamp) for file in self.files if MediaValidator.validate(file)]
-        sorted_files = sorted(file_times, key=lambda x: x[1])
+        sorted_files = sorted(file_times, key=lambda f, t: (MyPath(f).suffix, t))
         for i in range(1, len(sorted_files)):
             curr_file, curr_time = sorted_files[i]
             prev_file, prev_time = sorted_files[i - 1]
