@@ -6,6 +6,8 @@ import requests
 from pathlib import Path
 from typing import Optional, Union, Dict, Any
 
+import my_deco
+
 class LLMClient:
     def __init__(self,
                  api_key='sk-ipaoxjdlloswleefiawvqxgfivfxdvkvlxfzktitiksvxtwu',
@@ -25,6 +27,7 @@ class LLMClient:
         )
         self.default_model = default_model
     
+    @my_deco.retry_api(max_retries=3, delay=1.0)
     def query(self, prompt, response_format=None, model=None):
         """
         Query the LLM with a prompt.
@@ -59,11 +62,11 @@ class LLMClient:
                 try:
                     return json.loads(content)
                 except json.JSONDecodeError:
-                    return {"response": content}
+                    return {"response": content, "code": 200}
             return content
             
         except Exception as e:
-            return {"error": str(e)}
+            return {"error": str(e), "code": 500}
     
     def __call__(self, prompt, **kwargs):
         """Shortcut for the query method"""
@@ -90,6 +93,7 @@ class VLMClient:
             "Content-Type": "application/json"
         }
     
+    @my_deco.retry_api(max_retries=3, delay=1.0)
     def query(self, 
               prompt: str, 
               image_path: str, 
@@ -119,7 +123,7 @@ class VLMClient:
         try:
             image_data = self._encode_image(image_path)
         except Exception as e:
-            return {"error": f"Failed to process image: {str(e)}"}
+            return {"error": f"Failed to process image: {str(e)}", "code": 400}
         
         # Prepare the payload
         payload = {
@@ -169,8 +173,12 @@ class VLMClient:
             
             return content
             
-        except requests.exceptions.RequestException as e:
-            return {"error": str(e)}
+        except requests.exceptions.HTTPError as e:
+            # Extract status code from HTTP errors
+            status_code = e.response.status_code if hasattr(e, 'response') else 500
+            return {"error": str(e), "code": status_code}
+        except Exception as e:
+            return {"error": str(e), "code": 500}
     
     def _encode_image(self, image_path: str) -> str:
         """Encode image file to base64 string."""
@@ -180,7 +188,6 @@ class VLMClient:
     def __call__(self, prompt: str, image_path: str, **kwargs) -> Union[str, Dict]:
         """Shortcut for the query method"""
         return self.query(prompt, image_path, **kwargs)
-
 
 # Example usage:
 if __name__ == "__main__":
