@@ -37,6 +37,8 @@ CacheStates = namedtuple('CacheStates', ['raw', 'meta', 'rotate', 'thumb', 'capt
 LANGUAGE_OPTIONS = ['en', 'zh'] # en for english, ch for chinese
 
 class MediaCenter:
+
+    @global_tracker
     def __init__(self,
                  folder_path,
                  batch_size=8,
@@ -187,7 +189,6 @@ class MediaCenter:
         rotated_img = MediaOperator.rotate_image(raw_img, -clockwise_degrees)
         return rotated_img
 
-    @global_tracker
     def _get_media_rotation_clockwise_degree(self, image_path):
         if not self.check_rotation: return 0
 
@@ -198,14 +199,12 @@ class MediaCenter:
 
         return self.rotation_tag_cache_manager.load(image_path).get('rotate', 0)
 
-    @global_tracker
     def _generate_nude_tag(self, image_path):
         # bad implementation but no choice because of 3rd party implementation
         thumb_path = self.thumbnail_cache_manager.to_cache_path(image_path)
         nude_tags = self.nt.detect(thumb_path)
         return nude_tags
 
-    @global_tracker
     def _get_nude_tag(self, image_path):
         if not self.check_nude: return {}
         return self.nude_tag_cache_manager.load(image_path)

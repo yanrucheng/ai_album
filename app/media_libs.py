@@ -6,6 +6,8 @@ from typing import List, Dict
 
 from utils import MyPath
 from media_utils import MediaValidator
+from function_tracker import global_tracker
+import time
 
 import logging
 logger = logging.getLogger(__name__)
@@ -41,6 +43,7 @@ class MediaOrganizer:
         self.files: List[str] = []
         self.bundles: Dict[str, MediaBundle] = {}
 
+    @global_tracker
     def organize_files(self, filepaths: List[str]) -> List[MediaBundle]:
         """
         Register file paths, group them by similar filenames and temporal proximity,
@@ -49,7 +52,7 @@ class MediaOrganizer:
         for fp in filepaths:
             self._add_file(fp)
         self._apply_filename_strategy()
-        self._apply_temporal_strategy(threshold_sec=30)
+        self._apply_temporal_strategy(threshold_sec=15)
         self._update_bundles()
         return self.get_bundles()
 
@@ -68,19 +71,23 @@ class MediaOrganizer:
         if root1 != root2:
             self.parent[root2] = root1
 
+    @global_tracker
     def _apply_filename_strategy(self):
         """
         Group files that share the same base name.
         """
         groups = defaultdict(list)
         for file in self.files:
-            groups[Path(file).stem].append(file)
+            p = Path(file)
+            key = p.parent / p.stem
+            groups[key].append(file)
         for group in groups.values():
             if len(group) > 1:
                 # Union all files in the group
                 for file in group[1:]:
                     self._union(group[0], file)
 
+    @global_tracker
     def _apply_temporal_strategy(self, threshold_sec: float):
         """
         Group files whose timestamps are within threshold_sec seconds of each other.
@@ -90,7 +97,6 @@ class MediaOrganizer:
         for i in range(1, len(sorted_files)):
             curr_file, curr_time = sorted_files[i]
             prev_file, prev_time = sorted_files[i - 1]
-            # logger.debug(f"{curr_file} at {curr_time} (delta: {abs(curr_time - prev_time)} sec)")
             if abs(curr_time - prev_time) <= threshold_sec:
                 self._union(prev_file, curr_file)
 
@@ -130,11 +136,13 @@ class MediaOrganizer:
         """
         Return a sorted list of media bundles.
         """
-        return sorted(self.bundles.values(), key=lambda bundle: bundle.bundle_id)
+        return sorted(self.bundles.values(),
+                      key=lambda bundle: MyPath(bundle.representative_path).timestamp)
 
     def get_bundle(self, bundle_path):
         return self.bundles[bundle_path]
 
+    @global_tracker
     def get_all_valid_files(self, folder_path: str) -> List[str]:
         """
         Walk the folder, group files using filename and timestamp strategies,
@@ -150,20 +158,58 @@ class MediaOrganizer:
         )
 
         bundles = self.organize_files(all_files)
-
-
-        for bundle in bundles:
-            logger.debug(f"bundle: {bundle.representative_path}")
-            for f in bundle.files:
-                path = MyPath(f)
-                logger.debug(f"    - {f}, {path.timestr}")
+        self._show_bundle_stat(bundles)
 
         valid_files = []
         for bundle in bundles:
             rep = bundle.representative_path
             if MediaValidator.validate(rep):
                 valid_files.append(rep)
+
         return valid_files
+
+    @staticmethod
+    def _show_bundle_stat(bundles):
+        # Initialize counters for stats
+        total_bundles = len(bundles)
+        total_files = sum(len(b.files) for b in bundles)
+
+        for bundle in bundles:
+
+            if not MediaValidator.validate(bundle.representative_path):
+                continue
+
+            logger.debug(f"bundle: {bundle.representative_path}")
+            
+            file_count = len(bundle.files)
+            only_show = 2
+            if file_count > only_show:
+                first_half = only_show // 2
+                for f in bundle.files[:first_half]:
+                    path = MyPath(f)
+                    logger.debug(f"    - {f}, {path.timestr}")
+                
+                # Omitted count
+                omitted = file_count - only_show
+                logger.debug(f"    - ... {omitted} files omitted ...")
+                
+                last_half = only_show - first_half
+                for f in bundle.files[-last_half:]:
+                    path = MyPath(f)
+                    logger.debug(f"    - {f}, {path.timestr}")
+            else:
+                for f in bundle.files:
+                    path = MyPath(f)
+                    logger.debug(f"    - {f}, {path.timestr}")
+
+        # Calculate statistics
+        average_selection_rate = total_bundles / total_files if total_files > 0 else 0
+
+        # Log statistics
+        logger.info("\n=== Bundle Processing Statistics ===")
+        logger.info(f"Total bundles processed: {total_bundles}")
+        logger.info(f"Total files across all bundles: {total_files}")
+        logger.info(f"Average selection rate: {average_selection_rate:.2%}")
 
 
 # Example usage

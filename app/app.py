@@ -1,6 +1,5 @@
 from media_center import MediaCenter
 from my_cluster import operate_file_as_cluster
-import pprint
 import utils
 from function_tracker import global_tracker
 from argparser import parse_arguments, to_default_output_path
@@ -35,7 +34,8 @@ def app(in_folder, args):
         output_path = to_default_output_path(in_folder)
 
     if 'print' in args.output_type:
-        pprint.pprint(cluster)
+        printer = utils.TruncatedPrettyPrinter()
+        printer.pprint(cluster)
 
     if 'original' in args.output_type:
         operate_file_as_cluster(cluster, output_path,
@@ -54,7 +54,7 @@ def main():
     args = parse_arguments()
 
     if args.debug:
-        # global_tracker.enable()
+        global_tracker.enable()
         set_logger_config()
 
     for f in args.folder_paths:

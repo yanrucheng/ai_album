@@ -10,6 +10,7 @@ register_heif_opener()
 import utils  # Assumes utils provides Singleton, copy_with_meta, inplace_overwrite_meta, and suppress_c_stdout_stderr
 from utils import PathType
 import logging
+import functools
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class MediaValidator(utils.Singleton):
         return path.lower().endswith(MediaValidator.video_exts)
 
     @classmethod
+    @functools.lru_cache(maxsize=None)
     def validate(cls, path: str) -> bool:
         """
         Validate a single media file.
@@ -61,7 +63,8 @@ class MediaValidator(utils.Singleton):
                     cap.release()
                 return True
             else:
-                logger.debug(f"Unsupported file format: {path}")
+                pass
+                # logger.debug(f"Unsupported file format: {path}")
         except (IOError, SyntaxError) as e:
             logger.error(f"Invalid media file: {path}. Error: {e}")
         return False

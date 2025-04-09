@@ -20,8 +20,45 @@ import pytz
 import logging
 logger = logging.getLogger(__name__)
 
+import pprint
+from typing import Any
 
 # Print related
+class TruncatedPrettyPrinter(pprint.PrettyPrinter):
+    def __init__(self, *args, show_num: int = 10, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.show_num = show_num  # Number of items to show at start/end
+
+    def _format(self, obj: Any, *args, **kwargs) -> str:
+        if isinstance(obj, (list, tuple, set)) and len(obj) > self.show_num:
+            # Calculate items to show from start/end
+            first_half = self.show_num // 2
+            last_half = self.show_num - first_half
+            start = obj[:first_half]
+            end = obj[-last_half:]
+            omitted = len(obj) - (first_half + last_half)
+            
+            # Format with line breaks and omission count
+            separator = ',\n'
+            items_start = separator.join(map(repr, start))
+            items_end = separator.join(map(repr, end))
+            
+            res = 'default'
+            if isinstance(obj, list):
+                res = f"[\n{items_start},\n...<{omitted} items omitted>...,\n{items_end}\n]"
+            elif isinstance(obj, tuple):
+                res = f"(\n{items_start},\n...<{omitted} items omitted>...,\n{items_end}\n)"
+            else:  # set
+                res = f"{{\n{', '.join(map(repr, start))},\n...<{omitted} items omitted>...,\n{', '.join(map(repr, end))}\n}}"
+
+            return res, False, False
+        
+        res = super()._format(obj, *args, **kwargs)
+        print('24')
+        print(res)
+        print('24')
+        return res
+
 @contextlib.contextmanager
 def suppress_c_stdout_stderr(suppress_stdout=True, suppress_stderr=False):
     """A context manager that redirects C-level stdout and/or stderr to /dev/null"""
@@ -182,22 +219,7 @@ class MyPath:
 
     @property
     def timestamp(self):
-        timestamp = None
-        try:
-            stat_info = os.stat(self.path)
-            if platform.system() == 'Windows':
-                timestamp = stat_info.st_ctime
-            else:
-                try:
-                    timestamp = stat_info.st_birthtime  # macOS
-                except AttributeError:
-                    try:
-                        timestamp = stat_info.st_mtime  # Linux/Unix fallback
-                    except AttributeError:
-                        timestamp = time.time()  # Ultimate fallback
-        except (OSError, AttributeError):
-            timestamp = time.time()
-        return timestamp
+        return get_file_timestamp(self.path)
 
     @property
     def timestr(self):
@@ -233,6 +255,25 @@ class MyPath:
             return 'Night'
         else:  # from midnight to 5 am
             return 'Midnight'
+
+@lru_cache(maxsize=None)
+def get_file_timestamp(path):
+    timestamp = None
+    try:
+        stat_info = os.stat(path)
+        if platform.system() == 'Windows':
+            timestamp = stat_info.st_ctime
+        else:
+            try:
+                timestamp = stat_info.st_birthtime  # macOS
+            except AttributeError:
+                try:
+                    timestamp = stat_info.st_mtime  # Linux/Unix fallback
+                except AttributeError:
+                    timestamp = time.time()  # Ultimate fallback
+    except (OSError, AttributeError):
+        timestamp = time.time()
+    return timestamp
 
 # OS related
 
