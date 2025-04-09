@@ -1,17 +1,19 @@
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Dict, Optional, Union, Tuple
-from enum import Enum
 from pprint import pprint
 import functools
 
 import numpy as np
-import requests
 from xyconvert import wgs2gcj
 
 import logging
 logger = logging.getLogger(__name__)
 
+import time
+from typing import Callable, Any, Optional, Dict, Union, Tuple
+import requests
+import my_deco
+from enum import Enum
 
 class GeoAPIProvider(Enum):
     """Supported geocoding API providers"""
@@ -104,6 +106,7 @@ class GeoProcessor:
         return result
     
     @classmethod
+    @my_deco.retry_geo_api(max_retries=3, delay=1.0)
     def _call_api(cls, lon: float, lat: float, provider: GeoAPIProvider) -> Dict:
         """Internal method to call the specified geocoding API"""
         config = cls.API_CONFIG[provider]
@@ -124,12 +127,22 @@ class GeoProcessor:
 
             # Provider-specific success checking
             if provider == GeoAPIProvider.AMAP and data.get('status') != '1':
-                raise ValueError(f"AMap error: {data.get('info', 'Unknown error')}")
+                error_info = data.get('info', 'Unknown error')
+                return {
+                    'status': '0',
+                    'info': error_info,
+                    'infocode': data.get('infocode', '500')
+                }
             elif provider == GeoAPIProvider.LOCATIONIQ and 'error' in data:
-                raise ValueError(f"LocationIQ error: {data.get('error', 'Unknown error')}")
+                return {
+                    'status': '0',
+                    'error': data.get('error', 'Unknown error')
+                }
                 
             return data
         except requests.exceptions.RequestException as e:
+            return cls._format_error(provider, str(e))
+        except Exception as e:
             return cls._format_error(provider, str(e))
     
     @classmethod
@@ -351,6 +364,7 @@ class PhotoMetadataExtractor:
         except (IOError, OSError) as e:
             print(f"Error reading XMP file: {e}")
             return {}
+
 
 
 # Example usage
