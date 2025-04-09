@@ -69,7 +69,7 @@ class GeoProcessor:
         cls,
         lon: float,
         lat: float,
-        provider: GeoAPIProvider = GeoAPIProvider.AMAP
+        provider: GeoAPIProvider = GeoAPIProvider.LOCATIONIQ
     ) -> Dict:
         """
         Perform reverse geocoding using the specified provider
@@ -121,7 +121,7 @@ class GeoProcessor:
             response = requests.get(config['endpoint'], params=params)
             response.raise_for_status()
             data = response.json()
-            
+
             # Provider-specific success checking
             if provider == GeoAPIProvider.AMAP and data.get('status') != '1':
                 raise ValueError(f"AMap error: {data.get('info', 'Unknown error')}")
@@ -227,7 +227,8 @@ class PhotoMetadataExtractor:
 
             gps_resolved_d = {}
             if gps_lat_dec is not None and gps_lat_dec is not None:
-                gps_resolved_d = GeoProcessor().reverse_geocode(gps_lon_dec, gps_lat_dec)
+                gps_resolved_d = GeoProcessor().reverse_geocode(gps_lon_dec, gps_lat_dec,
+                                                                provider = GeoAPIProvider.LOCATIONIQ)
             
             # Process altitude
             altitude_str = get_attr('GPSAltitude', 'exif')
@@ -286,7 +287,7 @@ class PhotoMetadataExtractor:
                     'altitude_meters': altitude_meters,
                     'version': get_attr('GPSVersionID', 'exif')
                 }),
-                'gps_resolved': clean_dict(gps_resolved_d),
+                'gps_resolved': gps_resolved_d,
                 'camera': clean_dict({
                     'make': get_attr('Make', 'tiff'),
                     'model': get_attr('Model', 'tiff'),

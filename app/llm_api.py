@@ -71,7 +71,7 @@ class LLMClient:
 
 class VLMClient:
     def __init__(self,
-                 api_key: str = '',
+                 api_key: str = 'sk-ipaoxjdlloswleefiawvqxgfivfxdvkvlxfzktitiksvxtwu',
                  base_url: str = "https://api.siliconflow.cn/v1",
                  default_model: str = "deepseek-ai/deepseek-vl2"):
         """
@@ -91,9 +91,9 @@ class VLMClient:
         }
     
     def query(self, 
-              has_nude: bool = True,
               prompt: str, 
               image_path: str, 
+              has_nude: bool = True,
               response_format: Optional[Dict[str, Any]] = None,
               model: Optional[str] = None,
               **kwargs) -> Union[str, Dict]:
@@ -125,6 +125,13 @@ class VLMClient:
         payload = {
             "model": model,
             "stream": False,
+            "stream": False,
+            "max_tokens": 512,
+            "temperature": 0.7,
+            "top_p": 0.7,
+            "top_k": 50,
+            "frequency_penalty": 0.5,
+            "n": 1,
             "messages": [
                 {
                     "role": "user",
@@ -132,7 +139,7 @@ class VLMClient:
                         {
                             "image_url": {
                                 "detail": "high",
-                                "url": f"data:image/{Path(image_path).suffix[1:]};base64,{image_data}"
+                                "url": f"data:image/TYPE;base64,{image_data}"
                             },
                             "type": "image_url"
                         },
@@ -160,11 +167,6 @@ class VLMClient:
             
             content = response.json()['choices'][0]['message']['content']
             
-            if response_format and response_format.get('type') == 'json_schema':
-                try:
-                    return json.loads(content)
-                except json.JSONDecodeError:
-                    return {"response": content}
             return content
             
         except requests.exceptions.RequestException as e:

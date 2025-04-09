@@ -5,6 +5,7 @@ from function_tracker import global_tracker
 from argparser import parse_arguments, to_default_output_path
 from log_config import set_logger_config
 
+import pprint
 import logging
 logger = logging.getLogger(__name__)
 
@@ -13,18 +14,11 @@ def app(in_folder, args):
     s = MediaCenter(in_folder,
                     batch_size = args.batch_size,
                     check_rotation = not args.disable_rotation,
-                    check_nude = not args.disable_explicity_detection,
                     show_progress_bar = not args.disable_progress,
                     cache_flags = args.cache_flags,
                     )
+    s.compute_all_cache()
 
-    # Compute all captions
-    s.compute_all_captions()
-
-    # Compute all tags
-    s.compute_all_tags()
-
-    # Clustering images with specified distance levels
     thumb_cluster = s.thumbnail_cluster(*args.distance_levels)
     cluster = s.full_cluster(*args.distance_levels)
 
@@ -33,8 +27,7 @@ def app(in_folder, args):
         output_path = to_default_output_path(in_folder)
 
     if 'print' in args.output_type:
-        printer = utils.TruncatedPrettyPrinter()
-        printer.pprint(cluster)
+        pprint.pprint(cluster)
 
     if 'original' in args.output_type:
         operate_file_as_cluster(cluster, output_path,

@@ -9,9 +9,10 @@ register_heif_opener()
 
 import utils  # Assumes utils provides Singleton, copy_with_meta, inplace_overwrite_meta, and suppress_c_stdout_stderr
 from utils import PathType
-import logging
 import functools
+from function_tracker import global_tracker
 
+import logging
 logger = logging.getLogger(__name__)
 
 

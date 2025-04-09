@@ -1,7 +1,6 @@
 import os
 import platform
 import shutil
-import hashlib
 import functools
 from functools import lru_cache
 from datetime import datetime
@@ -24,8 +23,9 @@ import pprint
 from typing import Any
 
 # Print related
+# WIP. currently not working
 class TruncatedPrettyPrinter(pprint.PrettyPrinter):
-    def __init__(self, *args, show_num: int = 10, **kwargs):
+    def __init__(self, *args, show_num: int = 6, **kwargs):
         super().__init__(*args, **kwargs)
         self.show_num = show_num  # Number of items to show at start/end
 
@@ -51,12 +51,10 @@ class TruncatedPrettyPrinter(pprint.PrettyPrinter):
             else:  # set
                 res = f"{{\n{', '.join(map(repr, start))},\n...<{omitted} items omitted>...,\n{', '.join(map(repr, end))}\n}}"
 
-            return res, False, False
+            return None, res
         
         res = super()._format(obj, *args, **kwargs)
-        print('24')
-        print(res)
-        print('24')
+        # print('[super]', res)
         return res
 
 @contextlib.contextmanager

@@ -43,7 +43,6 @@ class MediaOrganizer:
         self.files: List[str] = []
         self.bundles: Dict[str, MediaBundle] = {}
 
-    @global_tracker
     def organize_files(self, filepaths: List[str]) -> List[MediaBundle]:
         """
         Register file paths, group them by similar filenames and temporal proximity,
@@ -71,14 +70,13 @@ class MediaOrganizer:
         if root1 != root2:
             self.parent[root2] = root1
 
-    @global_tracker
     def _apply_filename_strategy(self):
         """
         Group files that share the same base name.
         """
         groups = defaultdict(list)
         for file in self.files:
-            key = Path(file).withsuffix('')
+            key = Path(file).with_suffix('')
             groups[key].append(file)
         for group in groups.values():
             if len(group) > 1:
@@ -86,13 +84,12 @@ class MediaOrganizer:
                 for file in group[1:]:
                     self._union(group[0], file)
 
-    @global_tracker
     def _apply_temporal_strategy(self, threshold_sec: float):
         """
         Group files whose timestamps are within threshold_sec seconds of each other.
         """
         file_times = [(file, MyPath(file).timestamp) for file in self.files if MediaValidator.validate(file)]
-        sorted_files = sorted(file_times, key=lambda f, t: (MyPath(f).suffix, t))
+        sorted_files = sorted(file_times, key=lambda x: (MyPath(x[0]).extension, x[1]))
         for i in range(1, len(sorted_files)):
             curr_file, curr_time = sorted_files[i]
             prev_file, prev_time = sorted_files[i - 1]
@@ -141,7 +138,6 @@ class MediaOrganizer:
     def get_bundle(self, bundle_path):
         return self.bundles[bundle_path]
 
-    @global_tracker
     def get_all_valid_files(self, folder_path: str) -> List[str]:
         """
         Walk the folder, group files using filename and timestamp strategies,

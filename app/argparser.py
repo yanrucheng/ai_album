@@ -29,12 +29,10 @@ def parse_arguments():
 
     parser.add_argument('-dr', '--disable-rotation', action='store_true',
                         help='Check for media orientation and rotate them to standard direction.')
-    parser.add_argument('-ded', '--disable-explicity-detection', action='store_true',
-                        help='Check for exiplicit content and mark them in folder names.')
 
     parser.add_argument('-dl', '--distance-levels', nargs='*',
-                        type=float, default=[2, 0.5],
-                        help='List of distance levels for hierarchical clustering (default: [2, 0.5])')
+                        type=float, default=[0.2],
+                        help='List of distance levels for hierarchical clustering (default: [0.25, 0.1])')
 
     parser.add_argument('-o', '--output-path', type=validate_output_folder, default='',
                         help="Output path to copy files as clusters (default: ''). "
@@ -111,18 +109,15 @@ def parse_arguments():
         Folder Paths:
         """))
     pprint.pprint(args.folder_paths)  # Pretty print for folder paths
-    lang_str = {'en': 'English', 'zh': 'Chinese'}[args.language]
     print(textwrap.dedent(f"""
         Batch Size: {args.batch_size}
         Show Progress Bar: {'No' if args.disable_progress else 'Yes'}
         Check Media Rotation: {'Off' if args.disable_rotation else 'On'}
-        Check Explicit Detection: {'Off' if args.disable_explicity_detection else 'On'}
         Distance Levels: {args.distance_levels}
         Output Path: {'Default' if args.output_path == '' else args.output_path}
         Output Types: {args.output_type}
         Cache Flags: {args.cache_flags}
         Debug Mode: {'Yes' if args.debug else 'No'}
-        Language: {lang_str}
         """))
 
 

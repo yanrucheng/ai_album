@@ -281,11 +281,17 @@ class LinearHierarchicalCluster(BaseHierarchicalCluster):
                 for i in range(1, len(children_sorted)):
                     prev_fp, prev_emb = children_sorted[i - 1]
                     curr_fp, curr_emb = children_sorted[i]
-                    if self.sim_func(prev_emb, curr_emb) >= distance_levels[level]:
-                        current_cluster.append(children_sorted[i])
-                    else:
+
+                    sim = self.sim_func(prev_emb, curr_emb)
+                    d = 1 - sim
+                    logger.debug(f'{curr_fp} is {d:.2f} to {prev_fp}')
+
+                    if d >= distance_levels[level]:
+                        # too much distance, break into new cluster
                         clusters.append(current_cluster)
                         current_cluster = [children_sorted[i]]
+                    else:
+                        current_cluster.append(children_sorted[i])
 
                 clusters.append(current_cluster)
                 # Format as a dict for further recursion.

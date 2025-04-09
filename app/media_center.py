@@ -36,13 +36,11 @@ CacheStates = namedtuple('CacheStates', ['raw', 'meta', 'rotate', 'thumb', 'capt
 
 class MediaCenter:
 
-    @global_tracker
     def __init__(self,
                  folder_path,
                  batch_size=8,
                  show_progress_bar=True,
                  check_rotation=True,
-                 check_nude=True,
                  cache_flags=CacheStates(True,True,True,True,True,True,True),
                  **kwargs):
         print("Initializing ImageSimilarity...")
@@ -52,7 +50,6 @@ class MediaCenter:
         self.show_progress_bar = show_progress_bar
         self.kwargs = kwargs  # Store any additional keyword arguments
         self.check_rotation = check_rotation
-        self.check_nude = check_nude
         self.cache_flags = cache_flags
 
 
@@ -60,9 +57,8 @@ class MediaCenter:
         self.mo = MediaOrganizer()
         self.media_fps = self.mo.get_all_valid_files(folder_path)
         self.video_mng = VideoManager(folder_path, show_progress_bar)
-        self.cp = myllm.LocalImageCaptioner()
-        self.tl = myllm.MyTranslator()
-        self.titler = myllm.ImageTitler()
+
+        self.llm_gen = myllm.ImageLLMGen()
 
         self.mq = MediaQuestionare()
         self.mt = myllm.ImageTextMatcher()
@@ -106,6 +102,11 @@ class MediaCenter:
                                                     generate_func=self._generate_caption,
                                                     format_str="{base}_caption_{file_hash}.txt")
 
+        ## level 5: title detection
+        self.title_cache_manager     = CacheManager(target_path=folder_path,
+                                                    generate_func=self._generate_title,
+                                                    format_str="{base}_title_{file_hash}.txt")
+
         self._invalidate_cache()
 
 
@@ -145,7 +146,7 @@ class MediaCenter:
             if not self.cache_flags.title:
                 self.title_cache_manager.clear(f)
 
-    @global_tracker
+    # @global_tracker
     def _compute_raw_thumbnail(self, image_path):
         def compute_thumbnail(path):
             if MediaValidator.is_image(path) and MediaValidator.validate(path):
@@ -161,7 +162,7 @@ class MediaCenter:
 
         return compute_thumbnail(image_path)
 
-    @global_tracker
+    # @global_tracker
     def _compute_thumbnail(self, image_path):
         raw_img = self.raw_thumbnail_cache_manager.load(image_path)
         clockwise_degrees = self._get_media_rotation_clockwise_degree(image_path)
@@ -184,20 +185,29 @@ class MediaCenter:
         nude_tags = self.nt.detect(thumb_path)
         return nude_tags
 
+    # @global_tracker
     def _get_nude_tag(self, image_path):
-        if not self.check_nude: return {}
         return self.nude_tag_cache_manager.load(image_path)
 
+    def has_nude(self, image_path):
+        nude_tag = self.nude_tag_cache_manager.load(image_path)
+        if not nude_tag: return False
+        return any(d['sensitive'] for lb, d in nude_tag.items())
+
+    def has_mild_nude(self, image_path):
+        nude_tag = self.nude_tag_cache_manager.load(image_path)
+        if not nude_tag: return False
+        return any(d['mild_sensitive'] for lb, d in nude_tag.items())
+
+    # @global_tracker
     def _get_metadata(self, image_path):
         return self.meta_tag_cache_manager.load(image_path)
 
     def _generate_meta_tag(self, image_path):
         meta = mymetadata.PhotoMetadataExtractor.extract(image_path)
-        logger.debug(meta)
-        logger.debug(type(meta))
         return meta
 
-    @global_tracker
+    # @global_tracker
     def _generate_rotation_tag(self, image_path):
         img = self.raw_thumbnail_cache_manager.load(image_path)
         return self.mq.is_rotated(img)
@@ -207,59 +217,53 @@ class MediaCenter:
         for fp in tqdm(self.media_fps, desc="Initializing embeddings", disable=not self.show_progress_bar):
             _ = self.embedding_cache_manager.load(fp)
 
-    def compute_all_captions(self):
-        print("Initializing captions...")
-        for fp in tqdm(self.media_fps, desc="Initializing captions", disable=not self.show_progress_bar):
-            _ = self._get_caption(fp)
-
-    def compute_all_tags(self):
+    # @global_tracker
+    def compute_all_cache(self):
         print("Initializing tags...")
-        for fp in tqdm(self.media_fps, desc="Initializing tags", disable=not self.show_progress_bar):
+        for fp in tqdm(self.media_fps[:2], desc="Initializing tags", disable=not self.show_progress_bar):
             _ = self._get_metadata(fp)
             _ = self._get_nude_tag(fp)
+            _ = self._get_caption(fp)
             _ = self._get_title(fp)
             if self.check_rotation:
                 # if xmp contains rotation info then no need to compute
                 _ = self._get_media_rotation_clockwise_degree(fp)
 
-    @global_tracker
+    # @global_tracker
     def _generate_raw_embedding(self, image_path):
         img = self.raw_thumbnail_cache_manager.load(image_path)
         emb = self.similarity_model.get_embeddings([img])[0]  # Extract the first (and only) embedding
         return emb
 
-    @global_tracker
+    # @global_tracker
     def _generate_embedding(self, image_path):
         img = self.thumbnail_cache_manager.load(image_path)
         emb = self.similarity_model.get_embeddings([img])[0]  # Extract the first (and only) embedding
         return emb
 
+    # @global_tracker
     def _get_caption(self, image_path):
         return self.caption_cache_manager.load(image_path)
 
-    @global_tracker
+    # @global_tracker
     def _generate_caption(self, image_path):
-        img = self.thumbnail_cache_manager.load(image_path)
-        return self.cp.caption(img,
-                               max_new_tokens=150,     # 限制生成部分长度（确保在100-150范围内）
-                               min_new_tokens=50,     # 确保至少生成100个token（可选）
-                               num_beams=3,            # 束搜索宽度（提高多样性）
-                               # temperature=0.9,        # 适度随机性（避免过于机械）
-                               # top_k=50,               # 限制候选词范围（避免低概率词）
-                               # top_p=0.95,             # 核采样（保持多样性）
-                               repetition_penalty=1.5, # 抑制重复词汇（>1 减少重复）
-                               length_penalty=1.2,     # 鼓励稍长输出（>1 增加长度）
-                               # do_sample=True,         # 启用采样策略（结合top_k/top_p）
-                               early_stopping=True     # 提前终止（避免冗余）
-                               )
-
-    def _generate_title(self, image_path):
-        caption = self.caption_cache_manager.load(image_path)
+        has_mild_nude = self.has_mild_nude(image_path)
         metadata = self.meta_tag_cache_manager.load(image_path)
-        return self.titler.get_title(caption, metadata)
+        _ = self.thumbnail_cache_manager.load(image_path)
+        thumb_path = self.thumbnail_cache_manager._get_cache_file_path_from_path(image_path)
+        caption = self.llm_gen.get_caption(thumb_path, has_nude=has_mild_nude, metadata=metadata)
+        return caption
 
     def _get_title(self, image_path):
         return self.title_cache_manager.load(image_path)
+
+    def _generate_title(self, image_path):
+        has_mild_nude = self.has_mild_nude(image_path)
+        metadata = self.meta_tag_cache_manager.load(image_path)
+        _ = self.thumbnail_cache_manager.load(image_path)
+        thumb_path = self.thumbnail_cache_manager._get_cache_file_path_from_path(image_path)
+        title = self.llm_gen.get_title(thumb_path, has_nude=has_mild_nude, metadata=metadata)
+        return title
 
     def cluster(self, *args) -> Cluster:
         self.full_cluster(*args)
