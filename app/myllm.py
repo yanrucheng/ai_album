@@ -277,7 +277,8 @@ class ImageTitler:
         - Be poetic yet descriptive
         - Include key elements from caption
         - Reference location if distinctive
-        - Consider season/time if available, when mentioning season be very careful to check with date instead of purely based on image
+        - Consider season if photo date is available, assume Northern Hemisphere unless gps/location says otherwise
+        - Consider time of the day (morning / noon / night, etc) if photo time is available
         - Be in Chinese
         - Not exceed 15 chinese characters
         - Avoid generic terms like "photo" or "image"
@@ -396,7 +397,8 @@ class RemoteImageLLMGen:
         - Be poetic yet descriptive
         - Include key elements from caption
         - Reference location if distinctive
-        - Consider season/time if available, when mentioning season be very careful to check with date instead of purely based on image
+        - Consider season if photo date is available, assume Northern Hemisphere unless gps/location says otherwise
+        - Consider time of the day (morning / noon / night, etc) if photo time is available
         - Be in Chinese
         - Not exceed 15 chinese characters
         - Avoid generic terms like "photo" or "image"
