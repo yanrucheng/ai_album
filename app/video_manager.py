@@ -5,7 +5,6 @@ from PIL import Image
 from cache_manager import CacheManager
 from myllm import ImageSimilarityCalculator
 from media_utils import MediaOperator
-from function_tracker import global_tracker
 
 INTERVAL = 3
 TOP_K_KEY_FRAME_SELECTION = 0.5
@@ -28,7 +27,6 @@ class VideoManager:
                                                 format_str='{base}_{file_hash}_raw/{base}_emb_*.npy')
 
 
-    @global_tracker
     def extract_key_frame(self, path, top_k=TOP_K_KEY_FRAME_SELECTION):
 
         assert isinstance(top_k, int) or isinstance(top_k, float), 'top_k should be int or float'
@@ -60,11 +58,9 @@ class VideoManager:
         return key_frame
 
 
-    @global_tracker
     def extract_frames(self, video_path):
         return self.frame_cache_manager.load(video_path)
 
-    @global_tracker
     def _generate_embeddings(self, video_path):
         frames = self.extract_frames(video_path)
         if len(frames) <= 0:
@@ -72,7 +68,6 @@ class VideoManager:
         batch_embeddings = self.similarity_model.get_embeddings(frames, show_progress_bar=self.show_progress_bar, batch_size=8)
         return batch_embeddings
 
-    @global_tracker
     def _extract_and_cache_frames(self, video_path):
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
