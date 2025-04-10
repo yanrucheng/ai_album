@@ -51,6 +51,7 @@ class MediaCenter:
         self.kwargs = kwargs  # Store any additional keyword arguments
         self.check_rotation = check_rotation
         self.cache_flags = cache_flags
+        self.datum = datum
 
 
         self.folder_path = folder_path
@@ -223,7 +224,7 @@ class MediaCenter:
         return self.meta_tag_cache_manager.load(image_path)
 
     def _generate_meta_tag(self, image_path):
-        meta = my_metadata.PhotoMetadataExtractor.extract(image_path)
+        meta = my_metadata.PhotoMetadataExtractor.extract(image_path, datum=self.datum)
         return meta
 
     def _generate_rotation_tag(self, image_path):

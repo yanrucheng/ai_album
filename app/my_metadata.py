@@ -412,7 +412,7 @@ class PhotoMetadataExtractor:
         return possible_xmp if possible_xmp.exists() else None
     
     @classmethod
-    def _extract_from_xmp(cls, xmp_content: str) -> Dict[str, Dict[str, Union[str, float, int]]]:
+    def _extract_from_xmp(cls, xmp_content: str, datum: MapDatum) -> Dict[str, Dict[str, Union[str, float, int]]]:
         """Core metadata extraction from XMP content."""
         try:
             root = ET.fromstring(xmp_content)
@@ -437,7 +437,7 @@ class PhotoMetadataExtractor:
             gps_resolved_d = {}
             if gps_lat_dec is not None and gps_lat_dec is not None:
                 gps_resolved_d = GeoProcessor().reverse_geocode(gps_lon_dec, gps_lat_dec,
-                                                                datum=MapDatum.WGS84)
+                                                                datum=datum)
             
             # Process altitude
             altitude_str = get_attr('GPSAltitude', 'exif')
@@ -527,7 +527,7 @@ class PhotoMetadataExtractor:
             return {}
     
     @classmethod
-    def extract(cls, file_path: Union[str, Path]) -> Dict[str, Dict[str, Union[str, float, int]]]:
+    def extract(cls, file_path: Union[str, Path], datum: MapDatum = MapDatum.WGS84) -> Dict[str, Dict[str, Union[str, float, int]]]:
         """
         Extract metadata from image file or its XMP sidecar.
         
@@ -543,7 +543,7 @@ class PhotoMetadataExtractor:
         if path.suffix.lower() == '.xmp':
             try:
                 with open(path, 'r', encoding='utf-8') as f:
-                    return cls._extract_from_xmp(f.read())
+                    return cls._extract_from_xmp(f.read(), datum=datum)
             except (IOError, OSError) as e:
                 print(f"Error reading XMP file: {e}")
                 return {}
@@ -556,7 +556,7 @@ class PhotoMetadataExtractor:
         
         try:
             with open(xmp_path, 'r', encoding='utf-8') as f:
-                return cls._extract_from_xmp(f.read())
+                return cls._extract_from_xmp(f.read(), datum=datum)
         except (IOError, OSError) as e:
             print(f"Error reading XMP file: {e}")
             return {}
@@ -711,7 +711,7 @@ class PhotoInfoExtractor:
         if len(pois) > 0:
             geo_info.append("\n附近地点:")
             
-            for i, poi in enumerate(pois[:20], 1):
+            for i, poi in enumerate(pois[:10], 1):
                 if not isinstance(poi, dict):
                     continue
                     

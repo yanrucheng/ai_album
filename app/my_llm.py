@@ -108,57 +108,51 @@ class TextSimilarityCalculator(SimilarityCalculatorABC):
 
 class Prompt:
 
-    caption_requirement  = '''
-        Caption should 
-        - Be detailed about the image and focus on the main part then the other details.
-        - Reference location if distinctive
-        - Consider season if photo date is available, assume Northern Hemisphere unless gps/location says otherwise
-        - Consider time of the day (morning / noon / night, etc) if photo time is available
-        - Be in Chinese
-        - Only suggest dark or morbid titles if the photography themes explicitly mentions themes like
-          cemeteries, funerals, or horror. Otherwise, assume the photo is neutral/positive and avoid such terms entirely.
-          Prioritize safe, generic, or uplifting titles by default.
-        - Sometimes photos are taken near cemeteries but no explicit signs can be identified on the photo. Do not directly assume the theme to be dark / morbid in this case.
-    '''
+    caption_requirement  = '''Caption should 
+- Be detailed about the image and focus on the main part then the other details.
+- Reference location if distinctive
+- Consider season if photo date is available, assume Northern Hemisphere unless gps/location says otherwise
+- Consider time of the day (morning / noon / night, etc) if photo time is available
+- Be in Chinese
+- Only suggest dark or morbid titles if the photography themes explicitly mentions themes like
+    cemeteries, funerals, or horror. Otherwise, assume the photo is neutral/positive and avoid such terms entirely.
+    Prioritize safe, generic, or uplifting titles by default.
+- Sometimes photos are taken near cemeteries but no explicit signs can be identified on the photo. Do not directly assume the theme to be dark / morbid in this case.'''
 
     title_task = 'Generate a concise, descriptive title (15 Chinese characters or less) for a photo based on the provided image and metadata.'
 
-    title_requirement = '''
-        Title should:
-        - Be poetic yet descriptive
-        - Include key elements from caption
-        - Reference location if distinctive
-        - Consider season if photo date is available, assume Northern Hemisphere unless gps/location says otherwise
-        - Consider time of the day (morning / noon / night, etc) if photo time is available
-        - Be in Chinese
-        - Not exceed 15 chinese characters
-        - Avoid generic terms like "photo" or "image"
-        - Avoid ，。space, use - & when necessary
-        - Only suggest dark or morbid titles if the photography themes explicitly mentions themes like
-          cemeteries, funerals, or horror. Otherwise, assume the photo is neutral/positive and avoid such terms entirely.
-          Prioritize safe, generic, or uplifting titles by default.
-        - Sometimes photos are taken near cemeteries but no explicit signs can be identified on the photo. Do not directly assume the theme to be dark / morbid in this case.
-        
-        Example good titles:
-        - <xx地点>落日时分
-        - <xx地点>的童年
-        - <xx景色>大光圈特写
-        - 清晨<xx地点>沿岸的慢门
-        - 傍晚<xx地点>的长焦人像
-    '''
+    title_requirement = '''Title should:
+- Be poetic yet descriptive
+- Include key elements from caption
+- Reference location if distinctive
+- Consider season if photo date is available, assume Northern Hemisphere unless gps/location says otherwise
+- Consider time of the day (morning / noon / night, etc) if photo time is available
+- Be in Chinese
+- Not exceed 15 chinese characters
+- Avoid generic terms like "photo" or "image"
+- Avoid ，。space, use - & when necessary
+- Only suggest dark or morbid titles if the photography themes explicitly mentions themes like
+    cemeteries, funerals, or horror. Otherwise, assume the photo is neutral/positive and avoid such terms entirely.
+    Prioritize safe, generic, or uplifting titles by default.
+- Sometimes photos are taken near cemeteries but no explicit signs can be identified on the photo. Do not directly assume the theme to be dark / morbid in this case.
+
+Example good titles:
+- <xx地点>落日时分
+- <xx地点>的童年
+- <xx景色>大光圈特写
+- 清晨<xx地点>沿岸的慢门
+- 傍晚<xx地点>的长焦人像'''
 
     location_task = '''Summarize the most likely location among the Point of interests, based on the image content. NEVER directly give me the full address to me for this field. If no Geo info provided, return Unknown for this field. '''
 
-    location_requirement = '''
-        Location should:
-        - Be within 10 Chinese characters
-        - Be detailed. The following 2 examples are for your reference only:
-          1. <specific attraction within the garden> better than <garden name> and better than <country and city name>
-          2. <xx地点>便利店 better than 便利店 better than <city name>
-        - Only provide city and country if you cannot find any more detailed clue. Otherwise ignore the city and country name.
-        - Avoid punctuation like ，。and spacing
-        - A point of interest with shorter distance is more likely to be better, but do consider the image/image-caption content. the best location should fit the image.
-    '''
+    location_requirement = '''Location should:
+- Be within 10 Chinese characters
+- Be detailed. The following 2 examples are for your reference only:
+    1. <specific attraction within the garden> better than <garden name> and better than <country and city name>
+    2. <xx地点>便利店 better than 便利店 better than <city name>
+- Only provide city and country if you cannot find any more detailed clue. Otherwise ignore the city and country name.
+- Avoid punctuation like ，。and spacing
+- A point of interest with shorter distance is more likely to be better, but do consider the image/image-caption content. the best location should fit the image.'''
 
 class ImageLocator:
     def __init__(self):
@@ -167,20 +161,19 @@ class ImageLocator:
 
     def get_location(self, caption: str, geo_candidates: str):
 
-        prompt = f"""
-        # Task
-        {Prompt.location_task}
-        
-        # Image Caption
-        {caption}
+        prompt = f"""# Task
+{Prompt.location_task}
 
-        # Point of interests
-        {geo_candidates}
-        
-        # Requirement
-        {Prompt.location_requirement}
-        """
+# Image Caption
+{caption}
 
+# Point of interests
+{geo_candidates}
+
+# Requirement
+{Prompt.location_requirement}"""
+
+        logger.debug(prompt)
         content = self.client.query(prompt, response_format={
             'type': 'json_schema',
             "json_schema": {
@@ -209,20 +202,19 @@ class ImageTitler:
 
         metadata_str = my_metadata.PhotoInfoExtractor(metadata).get_info()
 
-        prompt = f"""
-        # Task
-        {Prompt.title_task}
-        
-        # Image Caption
-        {caption}
+        prompt = f"""# Task
+{Prompt.title_task}
 
-        # Other Image Metadata
-        {metadata_str}
-        
-        # Requirement
-        {Prompt.title_requirement}
-        """
+# Image Caption
+{caption}
 
+# Other Image Metadata
+{metadata_str}
+
+# Requirement
+{Prompt.title_requirement} """
+
+        logger.debug(prompt)
         content = self.client.query(prompt, response_format={
             'type': 'json_schema',
             "json_schema": {
@@ -314,30 +306,29 @@ class RemoteImageLLMGen:
     def get_llm_gen(self, image_path: str, metadata: Dict, has_nude=True):
         metadata_str = my_metadata.PhotoInfoExtractor(metadata).get_info()
 
-        prompt = f"""
-        # Task
-        1. {Prompt.title_task}
-        2. {Prompt.location_task}
-        3. Generate a concise, descriptive caption (300 Chinese characters or less) for a photo based on the provided image and metadata. Also concisely mention your inferring reason for the location here.
+        prompt = f"""# Task
+1. {Prompt.title_task}
+2. {Prompt.location_task}
+3. Generate a concise, descriptive caption (300 Chinese characters or less) for a photo based on the provided image and metadata. Also concisely mention your inferring reason for the location here.
 
-        # Other Image Metadata including location candidates
-        {metadata_str}
-        
-        # Caption Requirement
-        {Prompt.caption_requirement}
-        
-        # Title Requirement
-        {Prompt.title_requirement}
+# Other Image Metadata including location candidates
+{metadata_str}
 
-        # Location Requirement
-        {Prompt.location_requirement}
+# Caption Requirement
+{Prompt.caption_requirement}
 
-        # Result format, strictly follow this format and no other should be given.
-        title: <the generated title, a must field>
-        location: <the infered location, an must field>
-        caption: <the generated caption, a must field>
-        """
+# Title Requirement
+{Prompt.title_requirement}
 
+# Location Requirement
+{Prompt.location_requirement}
+
+# Result format, strictly follow this format and no other should be given.
+title: <the generated title, a must field>
+location: <the infered location, an must field>
+caption: <the generated caption, a must field> """
+
+        logger.debug(prompt)
         content = self.client.query(
             prompt=prompt,
             image_path=image_path,
