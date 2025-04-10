@@ -8,6 +8,7 @@ from typing import List, Dict
 
 import torch
 from nudenet import NudeDetector
+import my_metadata
 
 import logging
 logger = logging.getLogger(__name__)
@@ -17,8 +18,10 @@ class ImageLLMGen:
     def __init__(self):
         self.titles = {}
         self.captions = {}
+        self.locations = {}
         self.lcp = LocalImageCaptioner()
         self.titler = ImageTitler()
+        self.locator = ImageLocator()
         self.remote_llm = RemoteImageLLMGen()
 
     def get_title(self, image_path, has_nude=True, metadata=None):
@@ -30,6 +33,11 @@ class ImageLLMGen:
         if image_path not in self.captions:
             self._generate(image_path, has_nude, metadata)
         return self.captions.get(image_path, 'No caption')
+
+    def get_location(self, image_path, has_nude=True, metadata=None):
+        if image_path not in self.locations:
+            self._generate(image_path, has_nude, metadata)
+        return self.locations.get(image_path, 'Unknown')
 
     def _generate(self, image_path, has_nude=True, metadata=None):
         if has_nude:
@@ -46,15 +54,19 @@ class ImageLLMGen:
                         # do_sample=True,         # 启用采样策略（结合top_k/top_p）
                         early_stopping=True)     # 提前终止（避免冗余）
             title = self.titler.get_title(caption, metadata)
+            geo_candidates = my_metadata.PhotoInfoExtractor(metadata).get_geo_info()
+            location = self.locator.get_location(caption, geo_candidates)
 
             self.captions[image_path] = caption
             self.titles[image_path] = title
+            self.locations[image_path] = location
         else:
             logger.debug(f'{image_path} does not contain even mild nudity! processing using remote API')
-            title, caption = self.remote_llm.get_llm_gen(image_path, metadata, has_nude = has_nude)
+            title, caption, location = self.remote_llm.get_llm_gen(image_path, metadata, has_nude = has_nude)
 
             self.titles[image_path] = title
             self.captions[image_path] = caption
+            self.locations[image_path] = location
 
 
 class SimilarityCalculatorABC(Singleton):
@@ -94,164 +106,6 @@ class TextSimilarityCalculator(SimilarityCalculatorABC):
         print('Loading ', model_name)
         self.model = BertSimilarity(model_name_or_path=model_name)
 
-
-def get_photo_info(metadata):
-    if metadata is None or not isinstance(metadata, dict):
-        return ''
-
-    info_parts = []
-    
-    # 1. Enhanced Time and Date in Chinese format
-    photo_data = metadata.get('photo', {})
-    create_date = photo_data.get('create_date', '')
-    if create_date:
-        try:
-            # Parse date and time
-            date_part, time_part = create_date.split('T')
-            year, month, day = date_part.split('-')
-            time_part = time_part.split('+')[0]
-            hour, minute, _ = time_part.split(':')
-            hour_int = int(hour)
-            
-            # Format date (Chinese format: 2023年5月15日)
-            date_str = f"{year}年{int(month)}月{int(day)}日"
-            
-            # Determine time period with more detailed descriptions
-            if 4 <= hour_int < 6:
-                period = "清晨"
-            elif 6 <= hour_int < 9:
-                period = "早晨"
-            elif 9 <= hour_int < 11:
-                period = "上午"
-            elif 11 <= hour_int < 13:
-                period = "中午"
-            elif 13 <= hour_int < 17:
-                period = "下午"
-            elif 17 <= hour_int < 19:
-                period = "黄昏"
-            else:
-                period = "夜晚"
-            
-            # Format time (12-hour format)
-            display_hour = hour_int if hour_int <= 12 else hour_int - 12
-            if hour_int == 0:
-                display_hour = 12
-            
-            time_str = f"拍摄时间: {date_str} {period}{display_hour}点{minute}分"
-            info_parts.append(time_str)
-        except (IndexError, ValueError, AttributeError):
-            pass
-    
-    # 2. Focal length information
-    lens_data = metadata.get('lens', {})
-    focal_length = lens_data.get('focal_length_mm')
-    if focal_length is not None:
-        if focal_length > 150:
-            focal_str = f"镜头类型: 超长焦拍摄 ({focal_length}mm)"
-        elif focal_length > 70:
-            focal_str = f"镜头类型: 长焦拍摄 ({focal_length}mm)"
-        elif focal_length < 30:
-            focal_str = f"镜头类型: 广角拍摄 ({focal_length}mm)"
-        else:
-            focal_str = f"镜头类型: 标准人眼视角 ({focal_length}mm)"
-        info_parts.append(focal_str)
-    
-    # 3. Lens and camera info
-    camera_data = metadata.get('camera', {})
-    if camera_data.get('make') and camera_data.get('model'):
-        info_parts.append(f"相机: {camera_data['make']} {camera_data['model']}")
-    
-    if lens_data.get('model'):
-        info_parts.append(f"镜头型号: {lens_data['model']}")
-    
-    # 4. Exposure information
-    exposure = photo_data.get('exposure')
-    if exposure:
-        try:
-            numerator, denominator = map(int, exposure.split('/'))
-            exposure_value = numerator / denominator
-            
-            if exposure_value > 1/20:
-                info_parts.append("快门类型: 慢门拍摄")
-            elif exposure_value < 1/1000:
-                info_parts.append("快门类型: 高速快门")
-        except (ValueError, ZeroDivisionError):
-            pass
-    
-    # 5. Aperture information
-    aperture = lens_data.get('aperture_value')
-    if aperture is not None:
-        if aperture < 2:
-            info_parts.append("光圈类型: 大光圈拍摄")
-        elif aperture > 4:
-            info_parts.append("光圈类型: 小光圈拍摄")
-    
-    # 6. GPS information - extract all POIs (up to 10)
-    gps_info = []
-    gps_resolved = metadata.get('gps_resolved', [])
-    
-    if isinstance(gps_resolved, list) and len(gps_resolved) > 0:
-        # Get base location info from first POI
-        base_poi = gps_resolved[0]
-        if isinstance(base_poi, dict):
-            address = base_poi.get('address', {})
-            
-            # Build base location string
-            location_parts = []
-            for key in ['road', 'neighbourhood', 'city', 'state', 'country']:
-                if address.get(key):
-                    location_parts.append(address[key])
-            
-            if location_parts:
-                gps_info.append(f"基础位置: {'，'.join(location_parts)}")
-            
-            if base_poi.get('display_name'):
-                gps_info.append(f"详细地址: {base_poi['display_name']}")
-        
-        # Process all POIs (up to 10)
-        poi_count = min(10, len(gps_resolved))
-        if poi_count > 0:
-            gps_info.append("\n附近地点:")
-            
-            for i in range(poi_count):
-                poi = gps_resolved[i]
-                if not isinstance(poi, dict):
-                    continue
-                    
-                poi_entry = []
-                
-                # POI basic info
-                poi_name = poi.get('name', '未命名地点')
-                poi_entry.append(f"{i+1}. {poi_name}")
-                
-                # Distance
-                if 'distance' in poi:
-                    poi_entry.append(f"距离: {poi['distance']}米")
-                
-                # Type/Class
-                poi_type = poi.get('type', '') or poi.get('class', '')
-                if poi_type:
-                    poi_entry.append(f"类型: {poi_type}")
-                
-                # Address components
-                address = poi.get('address', {})
-                address_parts = []
-                for key in ['road', 'neighbourhood']:
-                    if address.get(key):
-                        address_parts.append(address[key])
-                
-                if address_parts:
-                    poi_entry.append(f"位置: {'，'.join(address_parts)}")
-                
-                gps_info.append(" | ".join(poi_entry))
-    
-    info_parts.extend(gps_info)
-    
-    # Format as a nicely indented string with Chinese keys
-    result = "\n".join(filter(None, info_parts))
-    
-    return result
-
 class Prompt:
 
     caption_requirement  = '''
@@ -266,6 +120,8 @@ class Prompt:
           Prioritize safe, generic, or uplifting titles by default.
         - Sometimes photos are taken near cemeteries but no explicit signs can be identified on the photo. Do not directly assume the theme to be dark / morbid in this case.
     '''
+
+    title_task = 'Generate a concise, descriptive title (15 Chinese characters or less) for a photo based on the provided image and metadata.'
 
     title_requirement = '''
         Title should:
@@ -284,13 +140,63 @@ class Prompt:
         - Sometimes photos are taken near cemeteries but no explicit signs can be identified on the photo. Do not directly assume the theme to be dark / morbid in this case.
         
         Example good titles:
-        - 玉渊潭樱花季的午后
-        - 故宫角楼落日时分
-        - 胡同里的童年
-        - 粉樱白樱大光圈特写
-        - 清晨目黑川沿岸的慢门
-        - 傍晚朝阳公园的长焦人像
+        - <xx地点>落日时分
+        - <xx地点>的童年
+        - <xx景色>大光圈特写
+        - 清晨<xx地点>沿岸的慢门
+        - 傍晚<xx地点>的长焦人像
     '''
+
+    location_task = '''Summarize the most likely location among the Point of interests, based on the image content. NEVER directly give me the full address to me for this field. If no Geo info provided, return Unknown for this field. '''
+
+    location_requirement = '''
+        Location should:
+        - Be within 10 Chinese characters
+        - Be detailed. The following 2 examples are for your reference only:
+          1. <specific attraction within the garden> better than <garden name> and better than <country and city name>
+          2. <xx地点>便利店 better than 便利店 better than <city name>
+        - Only provide city and country if you cannot find any more detailed clue. Otherwise ignore the city and country name.
+        - Avoid punctuation like ，。and spacing
+        - A point of interest with shorter distance is more likely to be better, but do consider the image/image-caption content. the best location should fit the image.
+    '''
+
+class ImageLocator:
+    def __init__(self):
+        self.client = llm_api.LLMClient()
+
+
+    def get_location(self, caption: str, geo_candidates: str):
+
+        prompt = f"""
+        # Task
+        {Prompt.location_task}
+        
+        # Image Caption
+        {caption}
+
+        # Point of interests
+        {geo_candidates}
+        
+        # Requirement
+        {Prompt.location_requirement}
+        """
+
+        content = self.client.query(prompt, response_format={
+            'type': 'json_schema',
+            "json_schema": {
+                "name": "photo_locator",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "location": { "type": "string" },
+                    },
+                    "required": [ "location" ],
+                    "additionalProperties": False
+                    }
+                }
+            })
+        return content['location']
 
 class ImageTitler:
     def __init__(self):
@@ -301,11 +207,11 @@ class ImageTitler:
 
         assert lang == 'zh', 'only chinese title is supported now'
 
-        metadata_str = get_photo_info(metadata)
+        metadata_str = my_metadata.PhotoInfoExtractor(metadata).get_info()
 
         prompt = f"""
         # Task
-        Generate a concise, descriptive title (15 Chinese characters or less) for a photo based on:
+        {Prompt.title_task}
         
         # Image Caption
         {caption}
@@ -406,14 +312,15 @@ class RemoteImageLLMGen:
         self.client = llm_api.VLMClient()
 
     def get_llm_gen(self, image_path: str, metadata: Dict, has_nude=True):
-        metadata_str = get_photo_info(metadata)
+        metadata_str = my_metadata.PhotoInfoExtractor(metadata).get_info()
 
         prompt = f"""
         # Task
-        1. Generate a concise, descriptive title (15 Chinese characters or less) for a photo based on the provided image and metadata.
-        2. Generate a concise, descriptive caption (around 200 english word) for a photo based on the provided image and metadata.
+        1. {Prompt.title_task}
+        2. {Prompt.location_task}
+        3. Generate a concise, descriptive caption (300 Chinese characters or less) for a photo based on the provided image and metadata. Also concisely mention your inferring reason for the location here.
 
-        # Other Image Metadata
+        # Other Image Metadata including location candidates
         {metadata_str}
         
         # Caption Requirement
@@ -422,9 +329,13 @@ class RemoteImageLLMGen:
         # Title Requirement
         {Prompt.title_requirement}
 
+        # Location Requirement
+        {Prompt.location_requirement}
+
         # Result format, strictly follow this format and no other should be given.
-        title: <the generated title>
-        caption: <the generated caption>
+        title: <the generated title, a must field>
+        location: <the infered location, an must field>
+        caption: <the generated caption, a must field>
         """
 
         content = self.client.query(
@@ -436,7 +347,7 @@ class RemoteImageLLMGen:
 
         logger.debug(content)
 
-        title, caption = '', ''
+        title = caption = location = ''
         for l in content.split('\n'):
             kw = 'title:' 
             if not title and kw in l:
@@ -446,7 +357,12 @@ class RemoteImageLLMGen:
             if not caption and kw in l:
                 caption = l.split(kw)[1].strip()
                 continue
-        return title, caption
+            kw = 'location:' 
+            if not location and kw in l:
+                location = l.split(kw)[1].strip()
+                continue
+        location = location or 'Unknown'
+        return title, caption, location
 
 
 

@@ -16,6 +16,7 @@ def app(in_folder, args):
                     check_rotation = not args.disable_rotation,
                     show_progress_bar = not args.disable_progress,
                     cache_flags = args.cache_flags,
+                    datum = args.map_datum,
                     )
     s.compute_all_cache()
 

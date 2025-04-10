@@ -116,7 +116,6 @@ class VLMClient:
         """
 
         assert not has_nude, 'You must ensure there is no nude content before sending it to cloud LLM.'
-
         model = model or self.default_model
         
         # Read and encode the image

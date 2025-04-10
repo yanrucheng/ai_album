@@ -31,7 +31,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from collections import namedtuple
-CacheStates = namedtuple('CacheStates', ['raw', 'meta', 'rotate', 'thumb', 'caption', 'nude', 'title'])
+CacheStates = namedtuple('CacheStates', ['raw', 'meta', 'rotate', 'thumb', 'caption', 'nude', 'title', 'location'])
 
 class MediaCenter:
 
@@ -40,7 +40,8 @@ class MediaCenter:
                  batch_size=8,
                  show_progress_bar=True,
                  check_rotation=True,
-                 cache_flags=CacheStates(True,True,True,True,True,True,True),
+                 cache_flags=CacheStates(True,True,True,True,True,True,True,True),
+                 datum=my_metadata.MapDatum.WGS84,
                  **kwargs):
         print("Initializing ImageSimilarity...")
 
@@ -100,11 +101,12 @@ class MediaCenter:
         self.caption_cache_manager   = CacheManager(target_path=folder_path,
                                                     generate_func=self._generate_caption,
                                                     format_str="{base}_caption_{file_hash}.txt")
-
-        ## level 5: title detection
         self.title_cache_manager     = CacheManager(target_path=folder_path,
                                                     generate_func=self._generate_title,
                                                     format_str="{base}_title_{file_hash}.txt")
+        self.location_cache_manager  = CacheManager(target_path=folder_path,
+                                                    generate_func=self._generate_location,
+                                                    format_str="{base}_location_{file_hash}.txt")
 
         self._invalidate_cache()
 
@@ -116,10 +118,10 @@ class MediaCenter:
                 sort_key_func = lambda x: MyPath(x).date,
                 obj_to_name = lambda x: MyPath(x).date)
         self.geo_cluster = LinearHierarchicalCluster(
-                embedding_func = self._get_gps,
-                similarity_func = self._get_gps_similarity,
+                embedding_func = self._get_location,
+                similarity_func = lambda x,y: 0 if x != y else np.inf,
                 sort_key_func = lambda x: MyPath(x).timestamp,
-                obj_to_name = self._get_gps_name,
+                obj_to_name = lambda x: '{idx}-' + self._get_location(x),
                 needs_prune = False,
                 )
         self.image_cluster = LinearHierarchicalCluster(
@@ -151,6 +153,8 @@ class MediaCenter:
                 self.nude_tag_cache_manager.clear(f)
             if not self.cache_flags.title:
                 self.title_cache_manager.clear(f)
+            if not self.cache_flags.location:
+                self.location_cache_manager.clear(f)
 
     def _compute_raw_thumbnail(self, image_path):
         def compute_thumbnail(path):
@@ -206,24 +210,7 @@ class MediaCenter:
         if None in (*latlon_pair_a, *latlon_pair_b):
             return np.inf
         d = utils.calculate_distance_meters(*latlon_pair_a, *latlon_pair_b)
-        return 1 / d
-
-    def _get_gps_name(self, image_path):
-        meta = self._get_metadata(image_path)
-        gps_resolved = meta.get('gps_resolved', [])
-        tourism_locs = sorted((d.get('distance'), d.get('address',{}).get('name'))
-                              for d in gps_resolved if d.get('class') == 'tourism')
-        if tourism_locs:
-            return tourism_locs[0][1]
-
-        other_locs = sorted((d.get('distance'), d.get('address',{}).get('name'))
-                            for d in gps_resolved)
-        if other_locs:
-            return other_locs[0][1]
-
-        lat, lon = self._get_gps(image_path)
-        loc = f'{lat:.6f}-{lon:.6f}'
-        return loc
+        return 1 / d if d else np.inf
 
     def _get_gps(self, image_path):
         meta = self._get_metadata(image_path)
@@ -255,6 +242,7 @@ class MediaCenter:
             _ = self._get_nude_tag(fp)
             _ = self._get_caption(fp)
             _ = self._get_title(fp)
+            _ = self._get_location(fp)
             if self.check_rotation:
                 # if xmp contains rotation info then no need to compute
                 _ = self._get_media_rotation_clockwise_degree(fp)
@@ -291,6 +279,17 @@ class MediaCenter:
         title = self.llm_gen.get_title(thumb_path, has_nude=has_mild_nude, metadata=metadata)
         return title
 
+    def _get_location(self, image_path):
+        return self.location_cache_manager.load(image_path)
+
+    def _generate_location(self, image_path):
+        has_mild_nude = self.has_mild_nude(image_path)
+        metadata = self.meta_tag_cache_manager.load(image_path)
+        _ = self.thumbnail_cache_manager.load(image_path)
+        thumb_path = self.thumbnail_cache_manager._get_cache_file_path_from_path(image_path)
+        location = self.llm_gen.get_location(thumb_path, has_nude=has_mild_nude, metadata=metadata)
+        return location
+
     def cluster(self, *args) -> Cluster:
         self.full_cluster(*args)
 
@@ -303,7 +302,7 @@ class MediaCenter:
         c_date = self.date_cluster.cluster(raw, [1])
 
         # group by location
-        c_geo = self.geo_cluster.cluster(raw, [1/500])
+        c_geo = self.geo_cluster.cluster(raw, [1])
 
         # distance_levels = [] means if 1 photos are taken
         c_named = self.image_cluster.cluster( c_geo, distance_levels,)

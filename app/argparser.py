@@ -1,4 +1,5 @@
 from media_center import CacheStates
+from my_metadata import MapDatum
 import textwrap
 import os, glob
 import pprint
@@ -41,18 +42,24 @@ def parse_arguments():
                         choices=['thumbnail', 'original', 'link', 'print'],
                         default=['thumbnail', 'link'],
                         help='Output types can be (one/multiple of)thumbnail, original, or link')
+    parser.add_argument("--map-datum",
+                        type=str_to_datum,
+                        choices=list(MapDatum),
+                        default=MapDatum.WGS84,
+                        help=f"Geodetic datum (default: {MapDatum.WGS84.value}). "
+                            f"Options: {', '.join(d.value for d in MapDatum)}")
 
     parser.add_argument('--debug', action='store_true',
                         help='Enable function tracking timer')
 
-    parser.add_argument("-cf", "--cache-flags", type=validate_cache_arg, default = '1111111',
+    parser.add_argument("-cf", "--cache-flags", type=validate_cache_arg, default = '11111111',
                         help=textwrap.dedent('''\
                             Control cache settings using a binary string. Each digit represents a cache (A, B, C, D, E) in order.
 
                             Pipeline structure:
                               -> B
                              /
-                            A -> C -> D -> E -> G
+                            A -> C -> D -> E+G+H
                              \\
                               -> F
 
@@ -64,6 +71,7 @@ def parse_arguments():
                             - E: caption cache
                             - F: nude detection tag cache
                             - G: title generation cache
+                            - H: location inferring cache
 
                             '1' turns a cache on, and '0' turns it off.
                             Turning off a cache also turns off all subsequent caches in the pipeline (A off -> B, C, D off).
@@ -101,6 +109,7 @@ def parse_arguments():
         caption = cs[4] == '1',
         nude = cs[5] == '1',
         title = cs[6] == '1',
+        location = cs[7] == '1',
     )
 
     # Print a summary of the inputs using textwrap for better formatting
@@ -124,8 +133,8 @@ def parse_arguments():
     return args
 
 def validate_cache_arg(cache_flags_str):
-    if len(cache_flags_str) != 7 or not all(char in '01' for char in cache_flags_str):
-        raise argparse.ArgumentTypeError(f"Cache flag must be a binary string of length 7, e.g., '1010100'. got: {cache_flags_str}")
+    if len(cache_flags_str) != 8 or not all(char in '01' for char in cache_flags_str):
+        raise argparse.ArgumentTypeError(f"Cache flag must be a binary string of length 8, e.g., '10101001'. got: {cache_flags_str}")
     return cache_flags_str
 
 def validate_output_folder(path):
@@ -137,3 +146,12 @@ def validate_output_folder(path):
     else:
         raise argparse.ArgumentTypeError(f"'{path}' is not a valid potential directory path "
                                          "or'print' or '' or 'default'")
+
+def str_to_datum(value: str) -> MapDatum:
+    try:
+        return MapDatum(value.lower())  # Case-insensitive lookup
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"Invalid datum: '{value}'. Must be one of: {', '.join(d.value for d in MapDatum)}"
+        )
+

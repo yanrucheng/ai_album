@@ -4,7 +4,7 @@ from pprint import pprint
 import functools
 
 import numpy as np
-from xyconvert import wgs2gcj
+from xyconvert import wgs2gcj, gcj2wgs
 
 import logging
 logger = logging.getLogger(__name__)
@@ -21,150 +21,346 @@ class GeoAPIProvider(Enum):
     LOCATIONIQ = 'locationiq'  # Uses WGS-84 coordinates
     # Add more providers as needed
 
+class MapDatum(Enum):
+    GCJ02 = 'gcj02'
+    WGS84 = 'wgs84'
+
 class GeoProcessor:
-    """Handles reverse geocoding with support for multiple APIs"""
+    """Handles reverse geocoding with support for multiple APIs, providing standardized output."""
     
-    # API configurations - each with their specific parameter formats
-    API_CONFIG = {
-        GeoAPIProvider.AMAP: {
-            'endpoint': "https://restapi.amap.com/v3/geocode/regeo",
-            'key': '1861034270ab66c3be10f478330466fb',
-            'params': {
-                'output': 'json',
-                'extensions': 'all',
-                'radius': 1000,
-            },
-            'coord_format': '{lon},{lat}',  # AMap takes "lon,lat" string
-            'requires_gcj02': True  # AMap needs Mars coordinates
-        },
-        GeoAPIProvider.LOCATIONIQ: {
-            'endpoint': "https://us1.locationiq.com/v1/nearby",
-            'key': 'pk.640a955650dce81e3442baa40151d0a6',
-            'params': {
-                'format': 'json',
-                'accept-language': 'zh',
-                'radius': 1000,
-            },
-            'coord_format': 'separate',  # LocationIQ takes separate lat/lon params
-            'requires_gcj02': False  # Uses standard WGS-84
-        }
-    }
-    
+    # Assume these are defined elsewhere as needed
+    AMAP_API_KEY = '1861034270ab66c3be10f478330466fb'
+    LOCATIONIQ_API_KEY = 'pk.640a955650dce81e3442baa40151d0a6'
+    _last_used_provider = GeoAPIProvider.LOCATIONIQ  # Default to LocationIQ
+
+    @classmethod
+    def convert(cls, lon, lat, from_datum, to_datum):
+        if from_datum == to_datum:
+            return lon, lat
+        if from_datum == MapDatum.GCJ02 and to_datum == MapDatum.WGS84:
+            return cls.gcj02_to_wgs84(lon, lat)
+        if from_datum == MapDatum.WGS84 and to_datum == MapDatum.GCJ02:
+            return cls.wgs84_to_gcj02(lon, lat)
+        raise NotImplementedError()
+
+    @staticmethod
+    def gcj02_to_wgs84(lon: float, lat: float) -> Tuple[float, float]:
+        gcj_coords = np.array([[lon, lat]])
+        wgs_coords = gcj2wgs(gcj_coords)
+        return float(wgs_coords[0, 0]), float(wgs_coords[0, 1])
+
     @staticmethod
     def wgs84_to_gcj02(lon: float, lat: float) -> Tuple[float, float]:
-        """
-        Convert WGS-84 coordinates to GCJ-02 (Mars coordinates)
-        
-        Args:
-            lon: Longitude in WGS-84
-            lat: Latitude in WGS-84
-            
-        Returns:
-            Tuple of (gcj_lon, gcj_lat) - Converted GCJ-02 coordinates
-        """
         wgs_coords = np.array([[lon, lat]])
         gcj_coords = wgs2gcj(wgs_coords)
         return float(gcj_coords[0, 0]), float(gcj_coords[0, 1])
-    
+
     @classmethod
     def reverse_geocode(
         cls,
         lon: float,
         lat: float,
-        provider: GeoAPIProvider = GeoAPIProvider.LOCATIONIQ
+        datum: MapDatum = MapDatum.WGS84,
     ) -> Dict:
         """
-        Perform reverse geocoding using the specified provider
+        External method for reverse geocoding that manages provider switching.
         
         Args:
             lon: Longitude in WGS-84
             lat: Latitude in WGS-84
-            provider: Which geocoding API to use
+            datum: Coordinate system datum (default: WGS84)
             
         Returns:
             Dictionary with geocoding results
         """
-        api_config = cls.API_CONFIG[provider]
+        # First try with the last used provider
+        provider = cls._last_used_provider
+        result = cls._reverse_geocode(lon, lat, provider, datum)
         
-        # Convert coordinates if required by the provider
-        if api_config['requires_gcj02']:
-            lon, lat = cls.wgs84_to_gcj02(lon, lat)
-            conversion_metadata = {
-                'original_coords': {'lon': lon, 'lat': lat, 'system': 'wgs84'},
-                'converted_coords': {'lon': lon, 'lat': lat, 'system': 'gcj02'}
-            }
-        else:
-            conversion_metadata = None
+        # Check if we need to switch providers
+        if provider == GeoAPIProvider.LOCATIONIQ and cls._is_in_china(result):
+            # Switch to AMap and try again
+            new_result = cls._reverse_geocode(lon, lat, GeoAPIProvider.AMAP, datum)
+            if new_result.get('status') == 'success' and new_result.get('location'):
+                cls._last_used_provider = GeoAPIProvider.AMAP
+                return new_result
+        elif provider == GeoAPIProvider.AMAP and cls._is_empty(result):
+            # Switch to LocationIQ and try again
+            new_result = cls._reverse_geocode(lon, lat, GeoAPIProvider.LOCATIONIQ, datum)
+            if new_result.get('status') == 'success' and new_result.get('location'):
+                cls._last_used_provider = GeoAPIProvider.LOCATIONIQ
+                return new_result
         
-        # Make the API call
-        result = cls._call_api(lon, lat, provider)
-        
-        # Add conversion metadata if applicable
-        if conversion_metadata:
-            result['conversion_metadata'] = conversion_metadata
-            
+        # Return the original result if no switch was needed or if the switch failed
         return result
 
     @classmethod
-    @my_deco.retry_geo_api(max_retries=3, delay=1.0)
-    def _call_api(cls, lon: float, lat: float, provider: GeoAPIProvider) -> Dict:
-        """Internal method to call the specified geocoding API"""
-        config = cls.API_CONFIG[provider]
-        params = config['params'].copy()
-        params['key'] = config['key']
+    def _reverse_geocode(
+        cls,
+        lon: float,
+        lat: float,
+        provider: GeoAPIProvider,
+        datum: MapDatum,
+    ) -> Dict:
+        """
+        Internal method for reverse geocoding with a specified provider and datum.
         
-        # Handle different coordinate parameter formats
-        if config['coord_format'] == 'separate':
-            params['lon'] = lon
-            params['lat'] = lat
+        Args:
+            lon: Longitude
+            lat: Latitude
+            provider: Geocoding API provider
+            datum: Coordinate system datum
+            
+        Returns:
+            Dictionary with geocoding results
+        """
+        # Determine target datum for the provider
+        if provider == GeoAPIProvider.AMAP:
+            to_datum = MapDatum.GCJ02
+        elif provider == GeoAPIProvider.LOCATIONIQ:
+            to_datum = MapDatum.WGS84
         else:
-            params['location'] = config['coord_format'].format(lon=lon, lat=lat)
-        
+            raise NotImplementedError(f"Provider {provider} not supported")
+
+        # Convert coordinates
+        lon_conv, lat_conv = cls.convert(lon, lat, from_datum=datum, to_datum=to_datum)
+        conversion_metadata = {
+            'original_coords': {'lon': lon, 'lat': lat, 'datum': datum.value},
+            'converted_coords': {'lon': lon_conv, 'lat': lat_conv, 'datum': to_datum.value}
+        }
+
+        # Process based on provider
+        if provider == GeoAPIProvider.AMAP:
+            result = cls._process_amap(lon_conv, lat_conv)
+        elif provider == GeoAPIProvider.LOCATIONIQ:
+            result = cls._process_locationiq(lon_conv, lat_conv)
+        else:
+            raise NotImplementedError(f"Processing for {provider} not implemented")
+
+        result['conversion_metadata'] = conversion_metadata
+        result['provider'] = provider.value
+        return result
+
+    @classmethod
+    def _is_in_china(cls, result: Dict) -> bool:
+        """Check if the result is in China based on the address components."""
+        if result.get('status') != 'success':
+            return False
+        address = result.get('location', {}).get('components', {})
+        country = address.get('country', '').lower()
+        return 'china' in country or '中国' in country
+
+    @classmethod
+    def _is_empty(cls, result: Dict) -> bool:
+        """Check if the result is empty or invalid."""
+        if result.get('status') != 'success':
+            return True
+        location = result.get('location')
+        return not location or not location.get('formatted_address')
+
+    @classmethod
+    def _process_amap(cls, lon: float, lat: float) -> Dict:
+        params = {
+            'key': cls.AMAP_API_KEY,
+            'output': 'json',
+            'extensions': 'all',
+            'radius': 1000,
+            'location': f"{lon:.6f},{lat:.6f}",
+            'accept-language': 'zh',
+        }
+        response = cls._call_amap_api(params)
+        if response.get('status') == '1':
+            regeocode = response.get('regeocode', {})
+            location = {
+                'formatted_address': regeocode.get('formatted_address'),
+                'components': regeocode.get('addressComponent', {})
+            }
+            pois = [cls._standardize_amap_poi(poi) for poi in regeocode.get('pois', [])]
+            return {
+                'status': 'success',
+                'location': location,
+                'pois': pois,
+                'error': None
+            }
+        else:
+            return {
+                'status': 'error',
+                'error': response.get('info', 'AMAP API error'),
+                'location': None,
+                'pois': []
+            }
+
+    @classmethod
+    @my_deco.retry_geo_api(max_retries=3, delay=1.0)
+    def _call_amap_api(cls, params: Dict) -> Dict:
+        endpoint = "https://restapi.amap.com/v3/geocode/regeo"
         try:
-            response = requests.get(config['endpoint'], params=params)
+            response = requests.get(endpoint, params=params)
             response.raise_for_status()
             data = response.json()
-
-            # Provider-specific success checking
-            if provider == GeoAPIProvider.AMAP and data.get('status') != '1':
-                error_info = data.get('info', 'Unknown error')
+            if data.get('status') == '1':
+                return data
+            else:
                 return {
                     'status': '0',
-                    'info': error_info,
+                    'info': data.get('info', 'Unknown error'),
                     'infocode': data.get('infocode', '500')
                 }
-            elif provider == GeoAPIProvider.LOCATIONIQ and 'error' in data:
-                return {
-                    'status': '0',
-                    'error': data.get('error', 'Unknown error')
-                }
-                
+        except requests.exceptions.RequestException as e:
+            return cls._format_error(GeoAPIProvider.AMAP, str(e))
+        except Exception as e:
+            return cls._format_error(GeoAPIProvider.AMAP, str(e))
+
+    @classmethod
+    def _process_locationiq(cls, lon: float, lat: float) -> Dict:
+        # Get location data
+        reverse_params = {
+            'key': cls.LOCATIONIQ_API_KEY,
+            'format': 'json',
+            'lat': lat,
+            'lon': lon,
+            'accept-language': 'zh',
+        }
+        reverse_response = cls._call_locationiq_reverse(reverse_params)
+
+        # Get POIs
+        nearby_params = {
+            'key': cls.LOCATIONIQ_API_KEY,
+            'format': 'json',
+            'lat': lat,
+            'lon': lon,
+            'radius': 1000,
+            'accept-language': 'zh',
+        }
+        nearby_response = cls._call_locationiq_nearby(nearby_params)
+
+        # Parse location
+        location = None
+        if not reverse_response.get('error'):
+            location = {
+                'formatted_address': reverse_response.get('display_name'),
+                'components': reverse_response.get('address', {})
+            }
+
+        # Parse POIs
+        pois = []
+        if isinstance(nearby_response, list):
+            pois = [cls._standardize_locationiq_poi(poi) for poi in nearby_response]
+        elif isinstance(nearby_response, dict) and nearby_response.get('error'):
+            pass  # Handle error if needed
+
+        # Determine status and errors
+        errors = []
+        if reverse_response.get('error'):
+            errors.append(reverse_response['error'])
+        if isinstance(nearby_response, dict) and nearby_response.get('error'):
+            errors.append(nearby_response['error'])
+        error_msg = '; '.join(errors) if errors else None
+
+        status = 'success' if location else 'error'
+        return {
+            'status': status,
+            'location': location,
+            'pois': pois,
+            'error': error_msg
+        }
+
+    @classmethod
+    @my_deco.retry_geo_api(max_retries=3, delay=1.0)
+    def _call_locationiq_reverse(cls, params: Dict) -> Dict:
+        endpoint = "https://us1.locationiq.com/v1/reverse"
+        try:
+            response = requests.get(endpoint, params=params)
+            response.raise_for_status()
+            data = response.json()
+            if 'error' in data:
+                return {'error': data['error']}
             return data
         except requests.exceptions.RequestException as e:
-            return cls._format_error(provider, str(e))
+            return cls._format_error(GeoAPIProvider.LOCATIONIQ, str(e))
         except Exception as e:
-            return cls._format_error(provider, str(e))
-    
+            return cls._format_error(GeoAPIProvider.LOCATIONIQ, str(e))
+
+    @classmethod
+    @my_deco.retry_geo_api(max_retries=3, delay=1.0)
+    def _call_locationiq_nearby(cls, params: Dict) -> Dict:
+        endpoint = "https://us1.locationiq.com/v1/nearby"
+        try:
+            response = requests.get(endpoint, params=params)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            return cls._format_error(GeoAPIProvider.LOCATIONIQ, str(e))
+        except Exception as e:
+            return cls._format_error(GeoAPIProvider.LOCATIONIQ, str(e))
+
     @classmethod
     def _format_error(cls, provider: GeoAPIProvider, message: str) -> Dict:
-        """Format error response consistently across providers"""
         base_error = {
-            'status': '0',
+            'status': 'error',
             'error': f"Request failed: {message}",
             'provider': provider.value
         }
-        
-        # Add provider-specific error fields
         if provider == GeoAPIProvider.AMAP:
             base_error['info'] = base_error.pop('error')
             base_error['infocode'] = '500'
-        
         return base_error
-    
+
+    @staticmethod
+    def _standardize_amap_poi(poi: Dict) -> Dict:
+        """Standardize AMap POI data to a common format with detailed fields."""
+        location = poi.get('location', '').split(',') if 'location' in poi else ['', '']
+        return {
+            'name': poi.get('name', ''),
+            'latitude': location[1] if len(location) > 1 else '',
+            'longitude': location[0] if len(location) > 0 else '',
+            'distance': poi.get('distance', ''),
+            'type': poi.get('type', ''),
+            'address': poi.get('address', ''),
+            'weight': poi.get('poiweight', ''),
+            'class': poi.get('type', '').split(';')[0] if 'type' in poi else '',
+            'type': poi.get('type', '').split(';')[0] if 'type' in poi else '',
+        }
+
+    @staticmethod
+    def _standardize_locationiq_poi(poi: Dict) -> Dict:
+        """Standardize LocationIQ POI data to a common format with detailed fields."""
+        address = ''
+        if 'display_name' in poi:
+            address = poi.get('display_name', '')
+        elif 'address' in poi:
+            address_parts = []
+            addr = poi['address']
+            if 'name' in addr:
+                address_parts.append(addr['name'])
+            if 'road' in addr:
+                address_parts.append(addr['road'])
+            if 'suburb' in addr:
+                address_parts.append(addr['suburb'])
+            if 'city' in addr:
+                address_parts.append(addr['city'])
+            if 'state' in addr:
+                address_parts.append(addr['state'])
+            if 'country' in addr:
+                address_parts.append(addr['country'])
+            address = ', '.join(filter(None, address_parts))
+        return {
+            'name': poi.get('name', ''),
+            'latitude': poi.get('lat', ''),
+            'longitude': poi.get('lon', ''),
+            'distance': poi.get('distance', ''),
+            'address': address,
+            'weight': '',  # LocationIQ does not provide a weight field
+            'class': poi.get('class', ''),
+            'type': poi.get('type', ''),
+        }
+
     @classmethod
     def set_api_key(cls, provider: GeoAPIProvider, key: str):
-        """Update API key for a specific provider"""
-        cls.API_CONFIG[provider]['key'] = key
+        if provider == GeoAPIProvider.AMAP:
+            cls.AMAP_API_KEY = key
+        elif provider == GeoAPIProvider.LOCATIONIQ:
+            cls.LOCATIONIQ_API_KEY = key
 
 class PhotoMetadataExtractor:
     """Extracts and processes metadata from photo files and their associated XMP sidecars."""
@@ -241,7 +437,7 @@ class PhotoMetadataExtractor:
             gps_resolved_d = {}
             if gps_lat_dec is not None and gps_lat_dec is not None:
                 gps_resolved_d = GeoProcessor().reverse_geocode(gps_lon_dec, gps_lat_dec,
-                                                                provider = GeoAPIProvider.LOCATIONIQ)
+                                                                datum=MapDatum.WGS84)
             
             # Process altitude
             altitude_str = get_attr('GPSAltitude', 'exif')
@@ -365,6 +561,193 @@ class PhotoMetadataExtractor:
             print(f"Error reading XMP file: {e}")
             return {}
 
+class PhotoInfoExtractor:
+    def __init__(self, metadata):
+        self.metadata = metadata if isinstance(metadata, dict) else {}
+
+    def get_time_info(self):
+        """Extract and format time information from photo metadata"""
+        photo_data = self.metadata.get('photo', {})
+        create_date = photo_data.get('create_date', '')
+        if not create_date:
+            return ''
+
+        try:
+            # Parse date and time
+            date_part, time_part = create_date.split('T')
+            year, month, day = date_part.split('-')
+            time_part = time_part.split('+')[0]
+            hour, minute, _ = time_part.split(':')
+            hour_int = int(hour)
+            
+            # Format date (Chinese format)
+            date_str = f"{year}年{int(month)}月{int(day)}日"
+            
+            # Determine time period
+            if 4 <= hour_int < 6:
+                period = "清晨"
+            elif 6 <= hour_int < 9:
+                period = "早晨"
+            elif 9 <= hour_int < 11:
+                period = "上午"
+            elif 11 <= hour_int < 13:
+                period = "中午"
+            elif 13 <= hour_int < 17:
+                period = "下午"
+            elif 17 <= hour_int < 19:
+                period = "黄昏"
+            else:
+                period = "夜晚"
+            
+            # Format time (12-hour format)
+            display_hour = hour_int if hour_int <= 12 else hour_int - 12
+            if hour_int == 0:
+                display_hour = 12
+            
+            return f"拍摄时间: {date_str} {period}{display_hour}点{minute}分"
+        except (IndexError, ValueError, AttributeError):
+            return ''
+
+    def get_lens_info(self):
+        """Extract and format lens information"""
+        lens_data = self.metadata.get('lens', {})
+        focal_length = lens_data.get('focal_length_mm')
+        if focal_length is None:
+            return ''
+
+        if focal_length > 150:
+            return f"镜头类型: 超长焦拍摄 ({focal_length}mm)"
+        elif focal_length > 70:
+            return f"镜头类型: 长焦拍摄 ({focal_length}mm)"
+        elif focal_length < 30:
+            return f"镜头类型: 广角拍摄 ({focal_length}mm)"
+        else:
+            return f"镜头类型: 标准人眼视角 ({focal_length}mm)"
+
+    def get_camera_info(self):
+        """Extract camera and lens model information"""
+        camera_data = self.metadata.get('camera', {})
+        camera_info = ''
+        if camera_data.get('make') and camera_data.get('model'):
+            camera_info = f"相机: {camera_data['make']} {camera_data['model']}"
+        
+        lens_data = self.metadata.get('lens', {})
+        lens_info = ''
+        if lens_data.get('model'):
+            lens_info = f"镜头型号: {lens_data['model']}"
+        
+        return '\n'.join(filter(None, [camera_info, lens_info]))
+
+    def get_exposure_info(self):
+        """Extract exposure/shutter speed information"""
+        photo_data = self.metadata.get('photo', {})
+        exposure = photo_data.get('exposure')
+        if not exposure:
+            return ''
+
+        try:
+            numerator, denominator = map(int, exposure.split('/'))
+            exposure_value = numerator / denominator
+            
+            if exposure_value > 1/20:
+                return "快门类型: 慢门拍摄"
+            elif exposure_value < 1/1000:
+                return "快门类型: 高速快门"
+        except (ValueError, ZeroDivisionError):
+            return ''
+        return ''
+
+    def get_aperture_info(self):
+        """Extract aperture information"""
+        lens_data = self.metadata.get('lens', {})
+        aperture = lens_data.get('aperture_value')
+        if aperture is None:
+            return ''
+
+        if aperture < 2:
+            return "光圈类型: 大光圈拍摄"
+        elif aperture > 4:
+            return "光圈类型: 小光圈拍摄"
+        return ''
+
+    def get_geo_info(self):
+        """Extract and format geographic information"""
+        geo_info = []
+        location_parts = []
+        gps = self.metadata.get('gps', {})
+        if not gps: return ''
+
+        lon = gps.get('longitude_dec')
+        lat = gps.get('latitude_dec')
+        if not lon or not lat: return ''
+
+        gps_resolved = self.metadata.get('gps_resolved', {})
+        if not isinstance(gps_resolved, dict):
+            return ''
+
+        gps_converted = gps_resolved.get('conversion_metadata', {})\
+                                    .get('converted_coords', {})
+        lon = gps_converted.get('lon')
+        lat = gps_converted.get('lat')
+        geo_info.append(f'GPS={lon:.6f},{lat:.6f}')
+
+        location = gps_resolved.get('location', {})
+        components = location.get('components', {})
+        
+        # Build base location string
+        for key in ['country', 'province', 'city', 'district', 'township']:
+            if components.get(key):
+                location_parts.append(components[key])
+        
+        if location_parts:
+            geo_info.append(f"拍摄地点: {'，'.join(location_parts)}")
+        
+        if location.get('formatted_address'):
+            geo_info.append(f"详细地址: {location['formatted_address']}")
+        
+        # Process POIs (up to 10)
+        pois = gps_resolved.get('pois', [])
+        pois = sorted(pois, key=lambda p: float(p.get('distance', '0')))
+        if len(pois) > 0:
+            geo_info.append("\n附近地点:")
+            
+            for i, poi in enumerate(pois[:20], 1):
+                if not isinstance(poi, dict):
+                    continue
+                    
+                poi_entry = []
+                poi_name = poi.get('name', '未命名地点')
+                poi_entry.append(f"{i}. {poi_name}")
+                
+                if 'distance' in poi:
+                    poi_entry.append(f"距离: {poi['distance']}米")
+                
+                poi_type = poi.get('type', '') or poi.get('class', '')
+                if poi_type:
+                    poi_entry.append(f"类型: {poi_type}")
+                
+                if poi.get('address'):
+                    poi_entry.append(f"地址: {poi['address']}")
+                
+                geo_info.append(" | ".join(poi_entry))
+        
+        return '\n'.join(geo_info)
+
+    def get_info(self):
+        """Main method to concatenate all extracted information"""
+        if not self.metadata:
+            return ''
+        
+        info_parts = [
+            self.get_time_info(),
+            self.get_lens_info(),
+            self.get_camera_info(),
+            self.get_exposure_info(),
+            self.get_aperture_info(),
+            self.get_geo_info()
+        ]
+        
+        return '\n'.join(filter(None, info_parts))
 
 
 # Example usage
