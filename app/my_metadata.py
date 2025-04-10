@@ -104,7 +104,7 @@ class GeoProcessor:
             result['conversion_metadata'] = conversion_metadata
             
         return result
-    
+
     @classmethod
     @my_deco.retry_geo_api(max_retries=3, delay=1.0)
     def _call_api(cls, lon: float, lat: float, provider: GeoAPIProvider) -> Dict:

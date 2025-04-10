@@ -100,12 +100,14 @@ class BaseHierarchicalCluster:
         embedding_func: Callable[[Any], np.ndarray],
         similarity_func: Callable[[Any, Any], float],
         obj_to_name: Callable[[Any], str] = None,
+        needs_prune: bool = True,
     ):
         self.emb_func = embedding_func
         self.sim_func = similarity_func
         if obj_to_name is None:
             obj_to_name = lambda x: x if isinstance(x, str) else "default"
         self.obj_to_name = obj_to_name
+        self.needs_prune = needs_prune
 
     def cluster(self, cluster: Cluster, distance_levels: List[float] = None) -> Cluster:
         """
@@ -117,7 +119,6 @@ class BaseHierarchicalCluster:
             distance_levels = [2, 0.5]  # Default thresholds
 
         # Process the initial cluster with the common leaf processor.
-        # (Assumes ClusterLeafProcessor.process is defined elsewhere.)
         initial_cluster = ClusterLeafProcessor.process(
             cluster, obj_to_obj=lambda f: (f, self.emb_func(f))
         )
@@ -126,11 +127,9 @@ class BaseHierarchicalCluster:
         res_cluster = self.recursive_clustering(initial_cluster, distance_levels, level=0)
 
         # Prune the extra nesting levels.
-        pruned_cluster = self.prune(res_cluster)
-
-        # Rename clusters based on intra-cluster similarities.
-        # named_cluster = self.name(pruned_cluster)
-        return pruned_cluster
+        if self.needs_prune:
+            res_cluster = self.prune(res_cluster)
+        return res_cluster
 
     def recursive_clustering(
         self, current_clusters: Cluster, distance_levels: List[float], level: int
@@ -250,8 +249,9 @@ class LinearHierarchicalCluster(BaseHierarchicalCluster):
         similarity_func: Callable[[Any, Any], float],
         sort_key_func: Callable[[Any], Any],
         obj_to_name: Callable[[Any], str] = None,
+        **kw,
     ):
-        super().__init__(embedding_func, similarity_func, obj_to_name)
+        super().__init__(embedding_func, similarity_func, obj_to_name, **kw)
         self.sort_key_func = sort_key_func
 
     def recursive_clustering(

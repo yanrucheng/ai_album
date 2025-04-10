@@ -3,7 +3,7 @@ import cv2
 from PIL import Image
 
 from cache_manager import CacheManager
-from myllm import ImageSimilarityCalculator
+from my_llm import ImageSimilarityCalculator
 from media_utils import MediaOperator
 
 INTERVAL = 3

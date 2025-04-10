@@ -10,6 +10,7 @@ import hashlib
 from pathlib import Path
 
 import sys
+import math
 import contextlib
 
 import json
@@ -503,3 +504,53 @@ def replace_ing_words(text, filename='verb.json'):
         verb_dict = json.load(file)
 
     return re.sub(r'\b(\w+ing)\b', lambda match: verb_dict.get(match.group(0), match.group(0)), text)
+
+
+# Geography related
+def calculate_distance_meters(
+    latitude_point_a: float,
+    longitude_point_a: float,
+    latitude_point_b: float,
+    longitude_point_b: float
+) -> float:
+    """
+    Calculate the great-circle distance between two points on Earth in meters.
+    
+    Args:
+        latitude_point_a: Latitude of first point in degrees
+        longitude_point_a: Longitude of first point in degrees
+        latitude_point_b: Latitude of second point in degrees
+        longitude_point_b: Longitude of second point in degrees
+    
+    Returns:
+        Distance between the points in meters
+    """
+    # Earth's radius in meters (mean radius)
+    EARTH_RADIUS_METERS = 6_371_000
+    
+    # Convert degrees to radians for trigonometric functions
+    lat_a_rad = math.radians(latitude_point_a)
+    lon_a_rad = math.radians(longitude_point_a)
+    lat_b_rad = math.radians(latitude_point_b)
+    lon_b_rad = math.radians(longitude_point_b)
+    
+    # Differences in coordinates
+    delta_latitude = lat_b_rad - lat_a_rad
+    delta_longitude = lon_b_rad - lon_a_rad
+    
+    # Haversine formula components
+    haversine_component = (
+        math.sin(delta_latitude / 2)**2 
+        + math.cos(lat_a_rad) 
+        * math.cos(lat_b_rad) 
+        * math.sin(delta_longitude / 2)**2
+    )
+    
+    # Angular distance calculation
+    angular_distance = 2 * math.atan2(
+        math.sqrt(haversine_component),
+        math.sqrt(1 - haversine_component)
+    )
+    
+    distance_meters = EARTH_RADIUS_METERS * angular_distance
+    return distance_meters

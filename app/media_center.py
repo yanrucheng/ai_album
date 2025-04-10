@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from cache_manager import CacheManager
 from video_manager import VideoManager
-import myllm
+import my_llm
 from media_questionare import MediaQuestionare
 from utils import MyPath, get_mode
 
@@ -20,7 +20,7 @@ from media_libs import MediaOrganizer
 from my_cluster import LinearHierarchicalCluster
 from my_cluster import ClusterKeyProcessor, ClusterLeafProcessor
 from my_cluster import Cluster
-import mymetadata
+import my_metadata
 
 from functools import lru_cache
 
@@ -44,7 +44,7 @@ class MediaCenter:
                  **kwargs):
         print("Initializing ImageSimilarity...")
 
-        self.similarity_model = myllm.ImageSimilarityCalculator()
+        self.similarity_model = my_llm.ImageSimilarityCalculator()
         self.batch_size = batch_size
         self.show_progress_bar = show_progress_bar
         self.kwargs = kwargs  # Store any additional keyword arguments
@@ -57,12 +57,12 @@ class MediaCenter:
         self.media_fps = self.mo.get_all_valid_files(folder_path)
         self.video_mng = VideoManager(folder_path, show_progress_bar)
 
-        self.llm_gen = myllm.ImageLLMGen()
+        self.llm_gen = my_llm.ImageLLMGen()
 
         self.mq = MediaQuestionare()
-        self.mt = myllm.ImageTextMatcher()
+        self.mt = my_llm.ImageTextMatcher()
 
-        self.nt = myllm.NudeTagger()
+        self.nt = my_llm.NudeTagger()
 
         # Initialize cache managers
         ## level 1: raw material
@@ -115,6 +115,13 @@ class MediaCenter:
                 similarity_func = lambda x,y: 0 if x != y else np.inf,
                 sort_key_func = lambda x: MyPath(x).date,
                 obj_to_name = lambda x: MyPath(x).date)
+        self.geo_cluster = LinearHierarchicalCluster(
+                embedding_func = self._get_gps,
+                similarity_func = self._get_gps_similarity,
+                sort_key_func = lambda x: MyPath(x).timestamp,
+                obj_to_name = self._get_gps_name,
+                needs_prune = False,
+                )
         self.image_cluster = LinearHierarchicalCluster(
                 embedding_func = self.embedding_cache_manager.load,
                 similarity_func = self.similarity_model.similarity_func,
@@ -195,11 +202,41 @@ class MediaCenter:
         if not nude_tag: return False
         return any(d['mild_sensitive'] for lb, d in nude_tag.items())
 
+    def _get_gps_similarity(self, latlon_pair_a, latlon_pair_b):
+        if None in (*latlon_pair_a, *latlon_pair_b):
+            return np.inf
+        d = utils.calculate_distance_meters(*latlon_pair_a, *latlon_pair_b)
+        return 1 / d
+
+    def _get_gps_name(self, image_path):
+        meta = self._get_metadata(image_path)
+        gps_resolved = meta.get('gps_resolved', [])
+        tourism_locs = sorted((d.get('distance'), d.get('address',{}).get('name'))
+                              for d in gps_resolved if d.get('class') == 'tourism')
+        if tourism_locs:
+            return tourism_locs[0][1]
+
+        other_locs = sorted((d.get('distance'), d.get('address',{}).get('name'))
+                            for d in gps_resolved)
+        if other_locs:
+            return other_locs[0][1]
+
+        lat, lon = self._get_gps(image_path)
+        loc = f'{lat:.6f}-{lon:.6f}'
+        return loc
+
+    def _get_gps(self, image_path):
+        meta = self._get_metadata(image_path)
+        gps = meta.get('gps', {})
+        lat = gps.get('latitude_dec', None)
+        lon = gps.get('longitude_dec', None)
+        return lat, lon
+
     def _get_metadata(self, image_path):
         return self.meta_tag_cache_manager.load(image_path)
 
     def _generate_meta_tag(self, image_path):
-        meta = mymetadata.PhotoMetadataExtractor.extract(image_path)
+        meta = my_metadata.PhotoMetadataExtractor.extract(image_path)
         return meta
 
     def _generate_rotation_tag(self, image_path):
@@ -265,8 +302,11 @@ class MediaCenter:
         # group by date
         c_date = self.date_cluster.cluster(raw, [1])
 
+        # group by location
+        c_geo = self.geo_cluster.cluster(raw, [1/500])
+
         # distance_levels = [] means if 1 photos are taken
-        c_named = self.image_cluster.cluster( c_date, distance_levels,)
+        c_named = self.image_cluster.cluster( c_geo, distance_levels,)
 
         return c_named
 
