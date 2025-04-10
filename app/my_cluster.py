@@ -249,10 +249,12 @@ class LinearHierarchicalCluster(BaseHierarchicalCluster):
         similarity_func: Callable[[Any, Any], float],
         sort_key_func: Callable[[Any], Any],
         obj_to_name: Callable[[Any], str] = None,
+        debug_distance: bool = False,
         **kw,
     ):
         super().__init__(embedding_func, similarity_func, obj_to_name, **kw)
         self.sort_key_func = sort_key_func
+        self.debug_distance = debug_distance
 
     def recursive_clustering(
         self, current_clusters: Cluster, distance_levels: List[float], level: int
@@ -283,11 +285,15 @@ class LinearHierarchicalCluster(BaseHierarchicalCluster):
                     curr_fp, curr_emb = children_sorted[i]
 
                     sim = self.sim_func(prev_emb, curr_emb)
-                    d = 1 - sim
-                    logger.debug(f'{curr_fp} is {d:.2f} to {prev_fp}')
+                    d = - sim
+
+                    if self.debug_distance:
+                        logger.debug(f'{curr_fp[-30:]} is {d:.2f} to {prev_fp[-30:]}')
 
                     if d >= distance_levels[level]:
                         # too much distance, break into new cluster
+                        if self.debug_distance:
+                            logger.debug('Too far away. Break into new clusters')
                         clusters.append(current_cluster)
                         current_cluster = [children_sorted[i]]
                     else:

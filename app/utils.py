@@ -505,6 +505,45 @@ def replace_ing_words(text, filename='verb.json'):
 
     return re.sub(r'\b(\w+ing)\b', lambda match: verb_dict.get(match.group(0), match.group(0)), text)
 
+def are_strings_similar(str1, str2):
+    """
+    Determine if two Chinese strings are similar based on:
+    1. One string is a substring of the other (e.g., "摩天" and "摩天轮")
+    2. They share significant overlapping characters (e.g., "成田机场" and "成天区")
+    
+    Args:
+        str1 (str): First string to compare
+        str2 (str): Second string to compare
+    
+    Returns:
+        bool: True if strings are similar, False otherwise
+    """
+    # Check if either string is empty
+    if not str1 or not str2:
+        return False
+    
+    # Case 1: One is substring of the other
+    if str1 in str2 or str2 in str1:
+        return True
+    
+    # Case 2: Significant character overlap (at least half characters match)
+    set1 = set(str1)
+    set2 = set(str2)
+    intersection = set1 & set2
+    min_length = min(len(str1), len(str2))
+    
+    # If at least half of the characters in the shorter string match
+    if len(intersection) >= min_length / 2:
+        return True
+    
+    return False
+
+# Test cases
+print(are_strings_similar("摩天", "摩天轮"))  # True (substring)
+print(are_strings_similar("成田机场", "成天区"))  # True (significant overlap)
+print(are_strings_similar("北京", "上海"))  # False (no similarity)
+print(are_strings_similar("火车站", "火车南站"))  # True (substring)
+
 
 # Geography related
 def calculate_distance_meters(

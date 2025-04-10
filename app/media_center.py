@@ -115,15 +115,16 @@ class MediaCenter:
         # Initialize similarity cluster
         self.date_cluster = LinearHierarchicalCluster(
                 embedding_func = lambda x: MyPath(x).date,
-                similarity_func = lambda x,y: 0 if x != y else np.inf,
+                similarity_func = lambda x,y: np.inf if x == y else 0,
                 sort_key_func = lambda x: MyPath(x).date,
                 obj_to_name = lambda x: MyPath(x).date)
         self.geo_cluster = LinearHierarchicalCluster(
-                embedding_func = self._get_location,
-                similarity_func = lambda x,y: 0 if x != y else np.inf,
+                embedding_func = self._get_gps,
+                similarity_func = self._get_gps_similarity,
                 sort_key_func = lambda x: MyPath(x).timestamp,
                 obj_to_name = lambda x: '{idx}-' + self._get_location(x),
                 needs_prune = False,
+                debug_distance = True,
                 )
         self.image_cluster = LinearHierarchicalCluster(
                 embedding_func = self.embedding_cache_manager.load,
@@ -211,7 +212,7 @@ class MediaCenter:
         if None in (*latlon_pair_a, *latlon_pair_b):
             return np.inf
         d = utils.calculate_distance_meters(*latlon_pair_a, *latlon_pair_b)
-        return 1 / d if d else np.inf
+        return -d
 
     def _get_gps(self, image_path):
         meta = self._get_metadata(image_path)
@@ -303,7 +304,7 @@ class MediaCenter:
         c_date = self.date_cluster.cluster(raw, [1])
 
         # group by location
-        c_geo = self.geo_cluster.cluster(raw, [1])
+        c_geo = self.geo_cluster.cluster(c_date, [1000])
 
         # distance_levels = [] means if 1 photos are taken
         c_named = self.image_cluster.cluster( c_geo, distance_levels,)
