@@ -24,7 +24,6 @@ import mymetadata
 
 from functools import lru_cache
 
-from function_tracker import global_tracker
 import utils
 import re
 
@@ -146,7 +145,6 @@ class MediaCenter:
             if not self.cache_flags.title:
                 self.title_cache_manager.clear(f)
 
-    # @global_tracker
     def _compute_raw_thumbnail(self, image_path):
         def compute_thumbnail(path):
             if MediaValidator.is_image(path) and MediaValidator.validate(path):
@@ -162,7 +160,6 @@ class MediaCenter:
 
         return compute_thumbnail(image_path)
 
-    # @global_tracker
     def _compute_thumbnail(self, image_path):
         raw_img = self.raw_thumbnail_cache_manager.load(image_path)
         clockwise_degrees = self._get_media_rotation_clockwise_degree(image_path)
@@ -185,7 +182,6 @@ class MediaCenter:
         nude_tags = self.nt.detect(thumb_path)
         return nude_tags
 
-    # @global_tracker
     def _get_nude_tag(self, image_path):
         return self.nude_tag_cache_manager.load(image_path)
 
@@ -199,7 +195,6 @@ class MediaCenter:
         if not nude_tag: return False
         return any(d['mild_sensitive'] for lb, d in nude_tag.items())
 
-    # @global_tracker
     def _get_metadata(self, image_path):
         return self.meta_tag_cache_manager.load(image_path)
 
@@ -207,7 +202,6 @@ class MediaCenter:
         meta = mymetadata.PhotoMetadataExtractor.extract(image_path)
         return meta
 
-    # @global_tracker
     def _generate_rotation_tag(self, image_path):
         img = self.raw_thumbnail_cache_manager.load(image_path)
         return self.mq.is_rotated(img)
@@ -217,10 +211,9 @@ class MediaCenter:
         for fp in tqdm(self.media_fps, desc="Initializing embeddings", disable=not self.show_progress_bar):
             _ = self.embedding_cache_manager.load(fp)
 
-    # @global_tracker
     def compute_all_cache(self):
-        print("Initializing tags...")
-        for fp in tqdm(self.media_fps[:2], desc="Initializing tags", disable=not self.show_progress_bar):
+        print("Computing all caches...")
+        for fp in tqdm(self.media_fps, desc="Initializing tags", disable=not self.show_progress_bar):
             _ = self._get_metadata(fp)
             _ = self._get_nude_tag(fp)
             _ = self._get_caption(fp)
@@ -229,23 +222,19 @@ class MediaCenter:
                 # if xmp contains rotation info then no need to compute
                 _ = self._get_media_rotation_clockwise_degree(fp)
 
-    # @global_tracker
     def _generate_raw_embedding(self, image_path):
         img = self.raw_thumbnail_cache_manager.load(image_path)
         emb = self.similarity_model.get_embeddings([img])[0]  # Extract the first (and only) embedding
         return emb
 
-    # @global_tracker
     def _generate_embedding(self, image_path):
         img = self.thumbnail_cache_manager.load(image_path)
         emb = self.similarity_model.get_embeddings([img])[0]  # Extract the first (and only) embedding
         return emb
 
-    # @global_tracker
     def _get_caption(self, image_path):
         return self.caption_cache_manager.load(image_path)
 
-    # @global_tracker
     def _generate_caption(self, image_path):
         has_mild_nude = self.has_mild_nude(image_path)
         metadata = self.meta_tag_cache_manager.load(image_path)

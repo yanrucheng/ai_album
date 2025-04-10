@@ -251,6 +251,47 @@ def get_photo_info(metadata):
     result = "\n".join(filter(None, info_parts))
     
     return result
+
+class Prompt:
+
+    caption_requirement  = '''
+        Caption should 
+        - Be detailed about the image and focus on the main part then the other details.
+        - Reference location if distinctive
+        - Consider season if photo date is available, assume Northern Hemisphere unless gps/location says otherwise
+        - Consider time of the day (morning / noon / night, etc) if photo time is available
+        - Be in Chinese
+        - Only suggest dark or morbid titles if the photography themes explicitly mentions themes like
+          cemeteries, funerals, or horror. Otherwise, assume the photo is neutral/positive and avoid such terms entirely.
+          Prioritize safe, generic, or uplifting titles by default.
+        - Sometimes photos are taken near cemeteries but no explicit signs can be identified on the photo. Do not directly assume the theme to be dark / morbid in this case.
+    '''
+
+    title_requirement = '''
+        Title should:
+        - Be poetic yet descriptive
+        - Include key elements from caption
+        - Reference location if distinctive
+        - Consider season if photo date is available, assume Northern Hemisphere unless gps/location says otherwise
+        - Consider time of the day (morning / noon / night, etc) if photo time is available
+        - Be in Chinese
+        - Not exceed 15 chinese characters
+        - Avoid generic terms like "photo" or "image"
+        - Avoid ，。space, use - & when necessary
+        - Only suggest dark or morbid titles if the photography themes explicitly mentions themes like
+          cemeteries, funerals, or horror. Otherwise, assume the photo is neutral/positive and avoid such terms entirely.
+          Prioritize safe, generic, or uplifting titles by default.
+        - Sometimes photos are taken near cemeteries but no explicit signs can be identified on the photo. Do not directly assume the theme to be dark / morbid in this case.
+        
+        Example good titles:
+        - 玉渊潭樱花季的午后
+        - 故宫角楼落日时分
+        - 胡同里的童年
+        - 粉樱白樱大光圈特写
+        - 清晨目黑川沿岸的慢门
+        - 傍晚朝阳公园的长焦人像
+    '''
+
 class ImageTitler:
     def __init__(self):
         self.client = llm_api.LLMClient()
@@ -273,24 +314,7 @@ class ImageTitler:
         {metadata_str}
         
         # Requirement
-        Title should:
-        - Be poetic yet descriptive
-        - Include key elements from caption
-        - Reference location if distinctive
-        - Consider season if photo date is available, assume Northern Hemisphere unless gps/location says otherwise
-        - Consider time of the day (morning / noon / night, etc) if photo time is available
-        - Be in Chinese
-        - Not exceed 15 chinese characters
-        - Avoid generic terms like "photo" or "image"
-        - Avoid ，。space, use - & when necessary
-        
-        Example good titles:
-        - 玉渊潭樱花季的午后
-        - 故宫角楼落日时分
-        - 胡同里的童年
-        - 粉樱白樱大光圈特写
-        - 清晨目黑川沿岸的慢门
-        - 傍晚朝阳公园的长焦人像
+        {Prompt.title_requirement}
         """
 
         content = self.client.query(prompt, response_format={
@@ -392,31 +416,11 @@ class RemoteImageLLMGen:
         # Other Image Metadata
         {metadata_str}
         
-        # Requirement
-        Title should:
-        - Be poetic yet descriptive
-        - Include key elements from caption
-        - Reference location if distinctive
-        - Consider season if photo date is available, assume Northern Hemisphere unless gps/location says otherwise
-        - Consider time of the day (morning / noon / night, etc) if photo time is available
-        - Be in Chinese
-        - Not exceed 15 chinese characters
-        - Avoid generic terms like "photo" or "image"
-        - Avoid ，。space, use - & when necessary
-
-        Caption should 
-        - Be detailed about the image and focus on the main part then the other details.
-        - Reference location if distinctive
-        - Consider season/time if available
-        - Be in Chinese
+        # Caption Requirement
+        {Prompt.caption_requirement}
         
-        # Example good titles:
-        - 玉渊潭樱花季的午后
-        - 故宫角楼落日时分
-        - 胡同里的童年
-        - 粉樱白樱大光圈特写
-        - 清晨目黑川沿岸的慢门
-        - 傍晚朝阳公园的长焦人像
+        # Title Requirement
+        {Prompt.title_requirement}
 
         # Result format, strictly follow this format and no other should be given.
         title: <the generated title>
