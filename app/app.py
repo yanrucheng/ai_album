@@ -18,6 +18,7 @@ def app(in_folder, args):
                     cache_flags = args.cache_flags,
                     datum = args.map_datum,
                     max_gap_for_bundle = args.max_gap_for_bundle,
+                    skip_validate = args.skip_validate,
                     )
     s.compute_all_cache()
 

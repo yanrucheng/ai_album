@@ -39,8 +39,8 @@ def parse_arguments():
                         help="Output path to copy files as clusters (default: ''). "
                         "Could be a path or '' (infered as <input_dir>_clustered)")
     parser.add_argument('-ot', '--output-type', nargs='*',
-                        choices=['thumbnail', 'original', 'link', 'print'],
-                        default=['thumbnail', 'link'],
+                        choices=['thumbnail', 'original', 'link', 'print', ''],
+                        default=['thumbnail'],
                         help='Output types can be (one/multiple of)thumbnail, original, or link')
     parser.add_argument("--map-datum",
                         type=str_to_datum,
@@ -51,6 +51,9 @@ def parse_arguments():
     parser.add_argument('-mg', '--max-gap-for-bundle',
                         type=int, default=15,
                         help='Max number of seconds for adjacent media to be treated as one bundle (default: 15 seconds)')
+
+    parser.add_argument('--skip-validate', action='store_true',
+                        help='Skip the media validation step for all media. Do not use unless you are 100% sure you do not have corrupted file.')
 
     parser.add_argument('--debug', action='store_true',
                         help='Enable function tracking timer')

@@ -103,6 +103,7 @@ class BaseHierarchicalCluster:
         similarity_func: Callable[[Any, Any], float],
         obj_to_name: Callable[[Any], str] = None,
         needs_prune: bool = False, # avoid single child node
+        verbosity: utils.Verbosity = utils.Verbosity.Once,
     ):
         self.emb_func = embedding_func
         self.sim_func = similarity_func
@@ -110,6 +111,7 @@ class BaseHierarchicalCluster:
             obj_to_name = lambda x: x if isinstance(x, str) else "default"
         self.obj_to_name = obj_to_name
         self.needs_prune = needs_prune
+        self.verbosity = verbosity
 
     def cluster(self, cluster: Cluster, distance_levels: List[float] = None) -> Cluster:
         """
@@ -195,18 +197,16 @@ class LinearHierarchicalCluster(BaseHierarchicalCluster):
         similarity_func: Callable[[Any, Any], float],
         sort_key_func: Callable[[Any], Any],
         obj_to_name: Callable[[Any], str] = None,
-        debug_distance: bool = False,
         needs_index: bool = False,
         merge_adjacent_same_key: bool = False,
-        allow_empty: bool = False,
+        merge_none_with_neighbor: bool = False,
         **kw,
     ):
         super().__init__(embedding_func, similarity_func, obj_to_name, **kw)
         self.sort_key_func = sort_key_func
-        self.debug_distance = debug_distance
         self.needs_index = needs_index
         self.merge_adjacent_same_key = merge_adjacent_same_key
-        self.allow_empty = allow_empty
+        self.merge_none_with_neighbor = merge_none_with_neighbor
 
     def recursive_clustering(
         self, cluster: Union[Dict[Any, Any], List[Any]], distance_levels: List[float], level: int
@@ -246,29 +246,35 @@ class LinearHierarchicalCluster(BaseHierarchicalCluster):
         """
         clusters = []
         current_cluster = [sorted_items[0]]
-        last_embedding = self.emb_func(sorted_items[0])
+        last_item = sorted_items[0]
+        last_embedding = self.emb_func(last_item)
 
         for i, current_item in enumerate(sorted_items[1:], 1):
             current_embedding = self.emb_func(current_item)
 
-            # Allow empty embeddings if enabled.
-            if current_embedding is None and self.allow_empty:
-                current_cluster.append(current_item)
+            similarity = self.sim_func(last_embedding, current_embedding)
+            distance = np.inf if similarity is None else (1 - similarity)
+
+            if self.merge_none_with_neighbor:
+                if current_embedding is None:
+                    current_cluster.append(current_item); continue
+                if last_embedding is None:
+                    distance = -np.inf
+
+            if self.verbosity >= utils.Verbosity.Full:
+                shorter_path = lambda x: f'{x[:15]}...{x[-15:]}' if len(x) > 33 else x
+                logger.debug(f'{shorter_path(current_item)} is {distance:.2f} to {shorter_path(last_item)}.')
+
+            if distance >= distance_threshold:
+                if utils.Verbosity.Detail <= self.verbosity < utils.Verbosity.Full:
+                    shorter_path = lambda x: f'{x[:15]}...{x[-15:]}' if len(x) > 33 else x
+                    logger.debug(f'{shorter_path(current_item)} is {distance:.2f} to {shorter_path(last_item)}.')
+                clusters.append(current_cluster)
+                current_cluster = [current_item]
             else:
-                similarity = self.sim_func(last_embedding, current_embedding)
-                distance = 1 - similarity
+                current_cluster.append(current_item)
 
-                if distance >= distance_threshold:
-                    if self.debug_distance:
-                        # Example debug logging.
-                        shorter_path = lambda x: f'{x[:15]}...{x[-15:]}' if len(x) > 33 else x
-                        logger.debug(f'{shorter_path(current_item)} is {distance:.2f} to {shorter_path(sorted_items[i-1])}.')
-                    clusters.append(current_cluster)
-                    current_cluster = [current_item]
-                else:
-                    current_cluster.append(current_item)
-
-            last_embedding = current_embedding
+            last_item, last_embedding = current_item, current_embedding
 
         clusters.append(current_cluster)
         return clusters
@@ -284,7 +290,8 @@ class LinearHierarchicalCluster(BaseHierarchicalCluster):
         for cluster in clusters:
             cluster_name = self.get_name_for_cluster_node(cluster)
             if self.merge_adjacent_same_key and (cluster_name == last_name) and sub_cluster_values:
-                sub_cluster_values[-1].extend(cluster)
+                last_cluster = sub_cluster_values[-1]
+                sub_cluster_values[-1] = last_cluster + cluster
             else:
                 sub_cluster_keys.append(cluster_name)
                 sub_cluster_values.append(cluster[:])

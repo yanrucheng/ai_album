@@ -21,8 +21,17 @@ import cv2
 import pprint
 from typing import Any
 
+from enum import IntEnum
+
 import logging
 logger = logging.getLogger(__name__)
+
+# Generic Class
+class Verbosity(IntEnum):
+    Slient = 0
+    Once = 1
+    Detail = 2
+    Full = 3
 
 # Print related
 # WIP. currently not working
@@ -558,10 +567,10 @@ def are_strings_similar(str1, str2):
 
 # Geography related
 def calculate_distance_meters(
-    latitude_point_a: float,
     longitude_point_a: float,
+    latitude_point_a: float,
+    longitude_point_b: float,
     latitude_point_b: float,
-    longitude_point_b: float
 ) -> float:
     """
     Calculate the great-circle distance between two points on Earth in meters.

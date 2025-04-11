@@ -134,14 +134,7 @@ class Prompt:
 - Only suggest dark or morbid titles if the photography themes explicitly mentions themes like
     cemeteries, funerals, or horror. Otherwise, assume the photo is neutral/positive and avoid such terms entirely.
     Prioritize safe, generic, or uplifting titles by default.
-- Sometimes photos are taken near cemeteries but no explicit signs can be identified on the photo. Do not directly assume the theme to be dark / morbid in this case.
-
-Example good titles:
-- <xx地点>落日时分
-- <xx地点>的童年
-- <xx景色>大光圈特写
-- 清晨<xx地点>沿岸的慢门
-- 傍晚<xx地点>的长焦人像'''
+- Sometimes photos are taken near cemeteries but no explicit signs can be identified on the photo. Do not directly assume the theme to be dark / morbid in this case.'''
 
     location_task = '''Summarize the most likely location among the Point of interests, based on the image content. NEVER directly give me the full address to me for this field. If no Geo info provided, return Unknown for this field. '''
 
@@ -149,7 +142,7 @@ Example good titles:
 - Be within 10 Chinese characters
 - Be detailed. The following 2 examples are for your reference only:
     1. <specific attraction within the garden> better than <garden name> and better than <country and city name>
-    2. <xx地点>便利店 better than 便利店 better than <city name>
+    2. <shop name with 地标> better than <a shop> better than <city name> only
 - Only provide city and country if you cannot find any more detailed clue. Otherwise ignore the city and country name.
 - Avoid punctuation like ，。and spacing
 - A point of interest with shorter distance is more likely to be better, but do consider the image/image-caption content. the best location should fit the image.'''

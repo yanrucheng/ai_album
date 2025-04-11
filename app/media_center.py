@@ -43,6 +43,7 @@ class MediaCenter:
                  cache_flags=CacheStates(True,True,True,True,True,True,True,True),
                  datum=my_metadata.MapDatum.WGS84,
                  max_gap_for_bundle=15,
+                 skip_validate=False,
                  **kwargs):
         print("Initializing ImageSimilarity...")
 
@@ -54,10 +55,14 @@ class MediaCenter:
         self.cache_flags = cache_flags
         self.datum = datum
         self.max_gap_for_bundle = max_gap_for_bundle
-
+        self.skip_validate = skip_validate
 
         self.folder_path = folder_path
-        self.mo = MediaOrganizer(max_gap_for_bundle=max_gap_for_bundle)
+        self.mo = MediaOrganizer(
+                max_gap_for_bundle=max_gap_for_bundle,
+                verbosity=utils.Verbosity.Once,
+                skip_validate=self.skip_validate,
+                )
         self.media_fps = self.mo.get_all_valid_files(folder_path)
         self.video_mng = VideoManager(folder_path, show_progress_bar)
 
@@ -120,17 +125,17 @@ class MediaCenter:
                 similarity_func = lambda x,y: 1 if x == y else -np.inf,
                 sort_key_func = lambda x: MyPath(x).date,
                 obj_to_name = lambda x: MyPath(x).date,
-                allow_empty = True,
+                merge_none_with_neighbor = True,
                 )
-        self.geo_cluster = LinearHierarchicalCluster(
+        self.site_cluster = LinearHierarchicalCluster(
                 embedding_func = self._get_gps,
-                similarity_func = self._get_gps_similarity,
+                similarity_func = self._get_site_similarity,
                 sort_key_func = lambda x: MyPath(x).timestamp,
-                obj_to_name = lambda x: self._get_location(x),
+                obj_to_name = self._get_location,
                 needs_index = True,
                 merge_adjacent_same_key = True,
-                debug_distance = True,
-                allow_empty = True,
+                merge_none_with_neighbor = True,
+                verbosity = utils.Verbosity.Full,
                 )
         self.image_cluster = LinearHierarchicalCluster(
                 embedding_func = lambda x:x,
@@ -138,7 +143,6 @@ class MediaCenter:
                 sort_key_func = lambda x: MyPath(x).timestamp,
                 obj_to_name = self.path_to_folder_name,
                 needs_index = True,
-                debug_distance = True,
                 )
         self._initialize()
 
@@ -217,12 +221,10 @@ class MediaCenter:
         if not nude_tag: return False
         return any(d['mild_sensitive'] for lb, d in nude_tag.items())
 
-    def _get_gps_similarity(self, latlon_pair_a, latlon_pair_b):
-        if None in latlon_pair_a:
-            return -np.inf
-        if None in latlon_pair_b:
-            return np.inf
-        d = utils.calculate_distance_meters(*latlon_pair_a, *latlon_pair_b)
+    def _get_site_similarity(self, lonlat_pair_a, lonlat_pair_b):
+        if None in (lonlat_pair_a, lonlat_pair_b):
+            return None
+        d = utils.calculate_distance_meters(*lonlat_pair_a, *lonlat_pair_b)
         return -d
 
     @functools.lru_cache(maxsize=8192)
@@ -231,7 +233,9 @@ class MediaCenter:
         gps = meta.get('gps', {})
         lat = gps.get('latitude_dec', None)
         lon = gps.get('longitude_dec', None)
-        return lat, lon
+        if None in (lat, lon):
+            return None
+        return lon, lat
 
     def _get_metadata(self, image_path):
         return self.meta_tag_cache_manager.load(image_path)
@@ -321,7 +325,7 @@ class MediaCenter:
     @functools.lru_cache(maxsize=64)
     def bundle_cluster(self, *distance_levels) -> Cluster:
         # use time to cluster
-        raw = {0: self.media_fps}
+        raw = self.media_fps[:]
 
         # group by date
         logger.debug('Group by date started')
@@ -330,10 +334,10 @@ class MediaCenter:
         logger.debug('Group by date finished')
 
         # group by location
-        logger.debug('Group by location started')
-        c_geo = self.geo_cluster.cluster(c_date, [3000])
+        logger.debug('Group by site started')
+        c_geo = self.site_cluster.cluster(c_date, [500])
         # pprint.pprint(c_geo)
-        logger.debug('Group by location finished')
+        logger.debug('Group by site finished')
 
         # distance_levels = [] means if 1 photos are taken
         logger.debug('Group by content started')

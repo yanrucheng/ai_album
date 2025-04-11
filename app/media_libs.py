@@ -37,23 +37,34 @@ class MediaOrganizer:
     and provides a method to retrieve all valid media files from a folder.
     """
 
-    def __init__(self, max_gap_for_bundle: int = 15):
+    def __init__(self,
+                 max_gap_for_bundle: int = 15,
+                 verbosity = utils.Verbosity.Once,
+                 skip_validate = False,
+                 ):
         # Union–find structure to group files
         self.parent: Dict[str, str] = {}
         self.files: List[str] = []
         self.bundles: Dict[str, MediaBundle] = {}
         self.max_gap_for_bundle = max_gap_for_bundle
+        self.verbosity = verbosity
+        self.skip_validate = skip_validate
 
     def organize_files(self, filepaths: List[str]) -> List[MediaBundle]:
         """
         Register file paths, group them by similar filenames and temporal proximity,
         and update media bundles.
         """
+        logger.debug(1)
         for fp in filepaths:
             self._add_file(fp)
+        logger.debug(2)
         self._apply_filename_strategy()
+        logger.debug(3)
         self._apply_temporal_strategy(threshold_sec=self.max_gap_for_bundle)
+        logger.debug(4)
         self._update_bundles()
+        logger.debug(5)
         return self.get_bundles()
 
     def _add_file(self, filepath: str):
@@ -95,7 +106,7 @@ class MediaOrganizer:
         """
         file_times = []
         for file in self.files:
-            validated = MediaValidator.validate(file)
+            validated = MediaValidator.validate(file, only_check_file_name = self.skip_validate)
             if not validated:
                 continue
             time = utils.MyPath(file).timestamp
@@ -174,8 +185,7 @@ class MediaOrganizer:
 
         return valid_files
 
-    @staticmethod
-    def _show_bundle_stat(bundles):
+    def _show_bundle_stat(self, bundles):
         # Initialize counters for stats
         total_bundles = len(bundles)
         total_files = sum(len(b.files) for b in bundles)
@@ -185,7 +195,8 @@ class MediaOrganizer:
             if not MediaValidator.validate(bundle.representative_path):
                 continue
 
-            logger.debug(f"bundle: {bundle.representative_path}")
+            if self.verbosity >= utils.Verbosity.Detail:
+                logger.debug(f"bundle: {bundle.representative_path}")
             
             file_count = len(bundle.files)
             only_show = 2
@@ -193,29 +204,34 @@ class MediaOrganizer:
                 first_half = only_show // 2
                 for f in bundle.files[:first_half]:
                     path = utils.MyPath(f)
-                    logger.debug(f"    - {f}, {path.timestr}")
+                    if self.verbosity >= utils.Verbosity.Detail:
+                        logger.debug(f"    - {f}, {path.timestr}")
                 
                 # Omitted count
                 omitted = file_count - only_show
-                logger.debug(f"    - ... {omitted} files omitted ...")
+                if self.verbosity >= utils.Verbosity.Detail:
+                    logger.debug(f"    - ... {omitted} files omitted ...")
                 
                 last_half = only_show - first_half
                 for f in bundle.files[-last_half:]:
                     path = utils.MyPath(f)
-                    logger.debug(f"    - {f}, {path.timestr}")
+                    if self.verbosity >= utils.Verbosity.Detail:
+                        logger.debug(f"    - {f}, {path.timestr}")
             else:
                 for f in bundle.files:
                     path = utils.MyPath(f)
-                    logger.debug(f"    - {f}, {path.timestr}")
+                    if self.verbosity >= utils.Verbosity.Detail:
+                        logger.debug(f"    - {f}, {path.timestr}")
 
         # Calculate statistics
         average_selection_rate = total_bundles / total_files if total_files > 0 else 0
 
         # Log statistics
-        logger.info("\n=== Bundle Processing Statistics ===")
-        logger.info(f"Total bundles processed: {total_bundles}")
-        logger.info(f"Total files across all bundles: {total_files}")
-        logger.info(f"Average selection rate: {average_selection_rate:.2%}")
+        if self.verbosity >= utils.Verbosity.Once:
+            logger.info("\n=== Bundle Processing Statistics ===")
+            logger.info(f"Total bundles processed: {total_bundles}")
+            logger.info(f"Total files across all bundles: {total_files}")
+            logger.info(f"Average selection rate: {average_selection_rate:.2%}")
 
 def get_file_timestamps(path):
     """

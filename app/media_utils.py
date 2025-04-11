@@ -40,7 +40,7 @@ class MediaValidator(utils.Singleton):
 
     @classmethod
     @functools.lru_cache(maxsize=None)
-    def validate(cls, path: str) -> bool:
+    def validate(cls, path: str, only_check_file_name: bool = False) -> bool:
         """
         Validate a single media file.
         
@@ -53,10 +53,14 @@ class MediaValidator(utils.Singleton):
 
         try:
             if cls.is_image(path):
+                if only_check_file_name: return True
+
                 with Image.open(path) as img:
                     img.verify()
                 return True
             elif cls.is_video(path):
+                if only_check_file_name: return True
+
                 with utils.suppress_c_stdout_stderr():
                     cap = cv2.VideoCapture(path)
                     if not cap.isOpened():
@@ -68,6 +72,7 @@ class MediaValidator(utils.Singleton):
                 # logger.debug(f"Unsupported file format: {path}")
         except (IOError, SyntaxError) as e:
             logger.error(f"Invalid media file: {path}. Error: {e}")
+
         return False
 
 
