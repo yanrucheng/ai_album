@@ -28,7 +28,11 @@ class LLMClient:
         self.default_model = default_model
     
     @my_deco.retry_api(max_retries=3, delay=1.0)
-    def query(self, prompt, response_format=None, model=None):
+    def query(self,
+              user_prompt,
+              system_prompt='You are a helpful assistant.',
+              response_format=None,
+              model=None):
         """
         Query the LLM with a prompt.
         
@@ -50,7 +54,8 @@ class LLMClient:
             response = self.client.chat.completions.create(
                 model=model,
                 messages=[
-                    {'role': 'user', 'content': prompt}
+                    {'role': 'system', 'content': system_prompt},
+                    {'role': 'user', 'content': user_prompt},
                 ],
                 stream=False,
                 response_format=response_format,
@@ -95,8 +100,9 @@ class VLMClient:
     
     @my_deco.retry_api(max_retries=3, delay=1.0)
     def query(self, 
-              prompt: str, 
               image_path: str, 
+              user_prompt: str, 
+              system_prompt: str = 'You are a helpful assistant',
               has_nude: bool = True,
               response_format: Optional[Dict[str, Any]] = None,
               model: Optional[str] = None,
@@ -128,14 +134,17 @@ class VLMClient:
         payload = {
             "model": model,
             "stream": False,
-            "stream": False,
-            "max_tokens": 512,
-            "temperature": 0.7,
-            "top_p": 0.7,
-            "top_k": 50,
-            "frequency_penalty": 0.5,
+            "max_tokens": 1024,          # Increased to allow longer descriptions
+            "temperature": 0.3,          # Lowered for less randomness, more focus
+            "top_p": 0.3,                # Narrower sampling for higher quality tokens
+            "top_k": 30,                 # Focus on top 30 relevant tokens
+            "frequency_penalty": 0.1,    # Allow slight repetition if needed for detail
             "n": 1,
             "messages": [
+                {
+                    "role": "system",
+                    "content": system_prompt,
+                },
                 {
                     "role": "user",
                     "content": [
@@ -147,7 +156,7 @@ class VLMClient:
                             "type": "image_url"
                         },
                         {
-                            "text": prompt,
+                            "text": user_prompt,
                             "type": "text"
                         }
                     ]

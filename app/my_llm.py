@@ -20,26 +20,26 @@ class ImageLLMGen:
         self.captions = {}
         self.locations = {}
         self.lcp = LocalImageCaptioner()
-        self.titler = ImageTitler()
-        self.locator = ImageLocator()
-        self.remote_llm = RemoteImageLLMGen()
+        self.titler = CaptionTitler()
+        self.locator = CaptionLocator()
+        self.remote_captioner = RemoteImageCaptioner()
 
     def get_title(self, image_path, has_nude=True, metadata=None):
         if image_path not in self.titles:
-            self._generate(image_path, has_nude, metadata)
+            self._generate_title(image_path, has_nude, metadata)
         return self.titles.get(image_path, 'Untitled')
 
     def get_caption(self, image_path, has_nude=True, metadata=None):
         if image_path not in self.captions:
-            self._generate(image_path, has_nude, metadata)
+            self._generate_caption(image_path, has_nude, metadata)
         return self.captions.get(image_path, 'No caption')
 
     def get_location(self, image_path, has_nude=True, metadata=None):
         if image_path not in self.locations:
-            self._generate(image_path, has_nude, metadata)
-        return self.locations.get(image_path, 'Unknown')
+            self._generate_location(image_path, has_nude, metadata)
+        return self.locations.get(image_path, None)
 
-    def _generate(self, image_path, has_nude=True, metadata=None):
+    def _generate_caption(self, image_path, has_nude=True, metadata=None):
         if has_nude:
             logger.debug(f'{image_path} contains nudity! processing locally')
             caption = self.lcp.caption(image_path,
@@ -53,21 +53,23 @@ class ImageLLMGen:
                         length_penalty=1.2,     # 鼓励稍长输出（>1 增加长度）
                         # do_sample=True,         # 启用采样策略（结合top_k/top_p）
                         early_stopping=True)     # 提前终止（避免冗余）
-            title = self.titler.get_title(caption, metadata)
-            geo_candidates = my_metadata.PhotoInfoExtractor(metadata).get_geo_info()
-            location = self.locator.get_location(caption, geo_candidates)
 
             self.captions[image_path] = caption
-            self.titles[image_path] = title
-            self.locations[image_path] = location
         else:
             logger.debug(f'{image_path} does not contain even mild nudity! processing using remote API')
-            title, caption, location = self.remote_llm.get_llm_gen(image_path, metadata, has_nude = has_nude)
-
-            self.titles[image_path] = title
+            caption = self.remote_captioner.get_caption(image_path, metadata, has_nude = has_nude)
             self.captions[image_path] = caption
-            self.locations[image_path] = location
 
+    def _generate_title(self, image_path, has_nude=True, metadata=None):
+        caption = self.get_caption(image_path=image_path, has_nude=has_nude, metadata=metadata)
+        location = self.get_location(image_path=image_path, has_nude=has_nude, metadata=metadata)
+        title = self.titler.get_title(caption, metadata, location)
+        self.titles[image_path] = title
+
+    def _generate_location(self, image_path, has_nude=True, metadata=None):
+        caption = self.get_caption(image_path=image_path, has_nude=has_nude, metadata=metadata)
+        location = self.locator.get_location(caption, metadata)
+        self.locations[image_path] = location
 
 class SimilarityCalculatorABC(Singleton):
     def __init__(self):
@@ -108,122 +110,180 @@ class TextSimilarityCalculator(SimilarityCalculatorABC):
 
 class Prompt:
 
-    caption_requirement  = '''Caption should 
-- Be detailed about the image and focus on the main part then the other details.
-- Reference location if distinctive
-- Consider season if photo date is available, assume Northern Hemisphere unless gps/location says otherwise
-- Consider time of the day (morning / noon / night, etc) if photo time is available
-- Be in Chinese
-- Only suggest dark or morbid titles if the photography themes explicitly mentions themes like
-    cemeteries, funerals, or horror. Otherwise, assume the photo is neutral/positive and avoid such terms entirely.
-    Prioritize safe, generic, or uplifting titles by default.
-- Sometimes photos are taken near cemeteries but no explicit signs can be identified on the photo. Do not directly assume the theme to be dark / morbid in this case.'''
+    title_system_prompt = '''你是一个专业的图像整理助手，负责根据用户提供的图像信息生成一个不超过12个汉字的中文文件夹名称。名称必须基于可验证的输入数据，确保准确且有意义。
 
-    title_task = 'Generate a concise, descriptive title (15 Chinese characters or less) for a photo based on the provided image and metadata.'
+命名规则：
+1 包含以下可验证的元素：
+   - 地点（来自地标名称或图像描述）
+   - 季节（需在图像描述或拍摄日期中有明确证据，12-2月为冬季，3-5月为春季，6-8月为秋季，9-11月为冬季。除非地点/gps明确表示在南半球则以南半球标准为准）
+   - 时段（需与元数据中的拍摄时段一致）
+   - 视觉特征（需在图像描述中明确提及）
 
-    title_requirement = '''Title should:
-- Be poetic yet descriptive
-- Include key elements from caption
-- Reference location if distinctive
-- Consider season if photo date is available, assume Northern Hemisphere unless gps/location says otherwise
-- Consider time of the day (morning / noon / night, etc) if photo time is available
-- Be in Chinese
-- Not exceed 15 chinese characters
-- Avoid generic terms like "photo" or "image"
-- Avoid ，。space, use - & when necessary
-- Only suggest dark or morbid titles if the photography themes explicitly mentions themes like
-    cemeteries, funerals, or horror. Otherwise, assume the photo is neutral/positive and avoid such terms entirely.
-    Prioritize safe, generic, or uplifting titles by default.
-- Sometimes photos are taken near cemeteries but no explicit signs can be identified on the photo. Do not directly assume the theme to be dark / morbid in this case.'''
+2 禁止包含以下内容：
+   - 无法验证的主观描述
+   - 缺失的信息
+   - 与相邻文件夹重复的或过于相似的名称
 
-    location_task = '''Summarize the most likely location among the Point of interests, based on the image content. NEVER directly give me the full address to me for this field. If no Geo info provided, return Unknown for this field. '''
+处理步骤：
+1 检查图像描述中的季节线索
+2 核对拍摄日期是否符合季节推断
+3 从地标名称提取核心词（如果有）
+4 组合可验证的信息，加视觉特征，生成文件夹名称
+5 检查是否与相邻文件夹名称冲突
 
-    location_requirement = '''Location should:
-- Be within 10 Chinese characters
-- Be detailed. The following 2 examples are for your reference only:
-    1. <specific attraction within the garden> better than <garden name> and better than <country and city name>
-    2. <shop name with 地标> better than <a shop> better than <city name> only
-- Only provide city and country if you cannot find any more detailed clue. Otherwise ignore the city and country name.
-- Avoid punctuation like ，。and spacing
-- A point of interest with shorter distance is more likely to be better, but do consider the image/image-caption content. the best location should fit the image.'''
+最终输出：仅返回一个不超过12个汉字的中文名称'''
 
-class ImageLocator:
-    def __init__(self):
-        self.client = llm_api.LLMClient()
-
-
-    def get_location(self, caption: str, geo_candidates: str):
-
-        prompt = f"""# Task
-{Prompt.location_task}
-
-# Image Caption
+    title_user_prompt = '''图片描述：
 {caption}
 
-# Point of interests
-{geo_candidates}
+地点：
+{location}
 
-# Requirement
-{Prompt.location_requirement}"""
+Meta信息：
+{meta_info}
 
-        logger.debug(prompt)
-        content = self.client.query(prompt, response_format={
-            'type': 'json_schema',
-            "json_schema": {
-                "name": "photo_locator",
-                "strict": True,
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "location": { "type": "string" },
-                    },
-                    "required": [ "location" ],
-                    "additionalProperties": False
-                    }
-                }
-            })
-        return content['location']
+此前出现的文件夹名：
+{previous_folder_names}'''
 
-class ImageTitler:
-    def __init__(self):
+    location_system_prompt = '''你的任务是根据图片描述和附近POI列表，严格提取最相关的地点名称
+规则：  
+1 有效输出：  
+   - 必须是具体的地标、场所或景点名称 如"东京塔""明治神宫"  
+   - 必须与POI列表完全匹配或在描述中明确提到  
+   - 必须以中文输出
+
+2 无效输出：  
+   - 单独的国家、城市或区级名称 如"日本""东京"  
+   - 地址片段 如"新宿站"若仅为交通枢纽  
+   - 无具体名称的泛称 如"公园""博物馆"  
+
+3 优先级：  
+   - 优先选择描述中明确提到的地标名称  
+   - 若无则从POI列表选择描述最接近且地理位置更接近的匹配
+   - 若仍无有效结果 返回不超过区级或市级的名称 如"新宿区""大阪市"  
+
+4 严格限制：  
+   - 严禁虚构 必须严格遵循POI列表  
+   - 输出仅中文名称 不带标点符号  
+
+输出格式：  
+返回具体名称 如"浅草寺" 或以<区/市名称>兜底 如"新宿区" '''
+
+    location_user_prompt = '''图片内容
+{caption}
+
+附近POI列表
+{geo_candidates}'''
+
+
+class CaptionLocator:
+    def __init__(self, verbosity : utils.Verbosity = utils.Verbosity.Once):
         self.client = llm_api.LLMClient()
+        self.verbosity = verbosity
 
+    def get_location(self, caption: str, metadata: Dict):
+        geo_candidates = my_metadata.PhotoInfoExtractor(metadata).get_geo_info()
+        if geo_candidates == '':
+            return None
 
-    def get_title(self, caption: str, metadata: Dict, lang='zh'):
+        user_prompt = Prompt.location_user_prompt.format(caption=caption, geo_candidates=geo_candidates)
+        system_prompt = Prompt.location_system_prompt
+        if self.verbosity >= utils.Verbosity.Once:
+            logger.debug(user_prompt)
+        content = self.client.query(
+                user_prompt=user_prompt,
+                system_prompt=system_prompt,
+                response_format={
+                    'type': 'json_schema',
+                    "json_schema": {
+                        "name": "photo_locator",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "site_name": { "type": "string" },
+                            },
+                            "required": [ "site_name" ],
+                            "additionalProperties": False
+                            }
+                        }
+                    }
+                )
+        location = content['site_name']
+        if self.verbosity >= utils.Verbosity.Once:
+            logger.debug(f'Site: {location}')
+        return location
 
-        assert lang == 'zh', 'only chinese title is supported now'
-
+class CaptionTitler:
+    def __init__(self, verbosity: utils.Verbosity = utils.Verbosity.Once, max_history: int = 10):
+        self.client = llm_api.LLMClient()
+        self.verbosity = verbosity
+        self.title_deque = collections.deque(maxlen=max_history)  # Now properly initialized with max length
+    
+    def get_title(self, caption: str, metadata: Dict, location: str):
         metadata_str = my_metadata.PhotoInfoExtractor(metadata).get_info()
 
-        prompt = f"""# Task
-{Prompt.title_task}
+        if location is None:
+            location = '本图片未记载地理信息，切勿随意假设地点信息。'
 
-# Image Caption
-{caption}
+        pif = my_metadata.PhotoInfoExtractor(metadata)
+        meta_info_parts = [
+            pif.get_time_info(),
+            pif.get_lens_info(),
+            pif.get_camera_info(),
+            pif.get_exposure_info(),
+            pif.get_aperture_info(),
+        ]
+        meta_info = '\n'.join(filter(None, meta_info_parts))
+        system_prompt = Prompt.title_system_prompt
+        
+        # Include previous titles in the prompt if available
+        previous_titles = '\n'.join(f"- {title}" for title in self.title_deque)
+        
+        user_prompt = Prompt.title_user_prompt.format(
+            caption=caption,
+            location=location,
+            meta_info=meta_info,
+            previous_folder_names=previous_titles if previous_titles else '无历史文件夹名',
+        )
 
-# Other Image Metadata
-{metadata_str}
+        if self.verbosity >= utils.Verbosity.Once:
+            logger.debug(user_prompt)
 
-# Requirement
-{Prompt.title_requirement} """
-
-        logger.debug(prompt)
-        content = self.client.query(prompt, response_format={
-            'type': 'json_schema',
-            "json_schema": {
-                "name": "photo_naming",
-                "strict": True,
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "title": { "type": "string" },
-                    },
-                    "required": [ "title" ],
-                    "additionalProperties": False
+        content = self.client.query(
+            user_prompt=user_prompt,
+            system_prompt=system_prompt,
+            response_format={
+                'type': 'json_schema',
+                "json_schema": {
+                    "name": "photo_naming",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                        },
+                        "required": ["title"],
+                        "additionalProperties": False
                     }
                 }
-            })
-        return content['title']
+            }
+        )
+        title = content['title']
+        
+        # Store the new title in the history
+        self.title_deque.append(title)
+        
+        if self.verbosity >= utils.Verbosity.Once:
+            logger.debug(f'title: {title}')
+            if self.title_deque:
+                logger.debug(f'Title history (last {len(self.title_deque)}): {list(self.title_deque)}')
+                
+        return title
+
+    def get_title_history(self) -> List[str]:
+        """Returns a list of the last K generated titles"""
+        return list(self.title_deque)
 
 
 class LavisModel:
@@ -292,61 +352,60 @@ class ImageTextMatcher(Singleton, LavisModel):
             return itm_scores[:, 1].item()
 
 
-class RemoteImageLLMGen:
-    def __init__(self):
+class RemoteImageCaptioner:
+    def __init__(self, verbosity : utils.Verbosity = utils.Verbosity.Once):
         self.client = llm_api.VLMClient()
+        self.verbosity = verbosity
 
-    def get_llm_gen(self, image_path: str, metadata: Dict, has_nude=True):
-        metadata_str = my_metadata.PhotoInfoExtractor(metadata).get_info()
+    def get_caption(self, image_path: str, metadata: Dict, has_nude=True):
+        assert not has_nude, f'You should not send potentially image with potential nudity ({image_path}) remotely.\n'
 
-        prompt = f"""# Task
-1. {Prompt.title_task}
-2. {Prompt.location_task}
-3. Generate a concise, descriptive caption (300 Chinese characters or less) for a photo based on the provided image and metadata. Also concisely mention your inferring reason for the location here.
+        system_prompt = '''你是一个专业的图像描述生成模型，专注于准确识别图像中的地点信息和人物特征。请遵循以下规则：
+1. 地点描述：
+   - 仅当图像中明确显示地标、文字标识、独特建筑或明确地理特征时，才描述具体位置
+   - 避免推测季节或时间（除非有钟表/昼夜明显特征）
+   - 区分室内/室外场景，注意墙面材质、地面类型、门窗样式等建筑细节
+   - 记录文字信息（招牌、路牌等）需严格准确
 
-# Other Image Metadata including location candidates
-{metadata_str}
+2. 人物描述：
+   - 记录可见的性别、年龄范围、衣着颜色/款式
+   - 注明显著特征（眼镜、纹身、配饰等）
+   - 描述动作和互动关系（如有多个人物）
+   - 绝对避免种族、职业等主观推测
 
-# Caption Requirement
-{Prompt.caption_requirement}
+3. 输出格式要求：
+   - 使用中性客观的语言
+   - 地点和人物信息分段落描述
+   - 不确定的元素用"可能"、"似乎"等谨慎表述'''
 
-# Title Requirement
-{Prompt.title_requirement}
+        user_prompt = '''请分析该图像并生成详细描述，特别注意：
+1. 地点信息：
+   - [图像中明确可见的地标或文字线索是什么？]
+   - [建筑风格/自然环境有哪些可验证的特征？]
+   - [地面/墙面材质等细节是否有助于定位？]
 
-# Location Requirement
-{Prompt.location_requirement}
+2. 人物信息：
+   - [可见的人物数量及基本特征？]
+   - [服装的显著颜色和款式？]
+   - [是否有携带物品或进行特定动作？]
 
-# Result format, strictly follow this format and no other should be given.
-title: <the generated title, a must field>
-location: <the infered location, an must field>
-caption: <the generated caption, a must field> """
+请严格区分观察事实与推测，对模糊信息保持谨慎。描述请用中文输出500字左右。'''
 
-        logger.debug(prompt)
+        if self.verbosity >= utils.Verbosity.Once:
+            logger.debug('Image Captioning:', user_prompt)
+
         content = self.client.query(
-            prompt=prompt,
+            user_prompt=user_prompt,
+            system_prompt=system_prompt,
             image_path=image_path,
             has_nude=has_nude,
-            response_format={ 'type': 'text', }
+            response_format={ 'type': 'text' }
             )
 
-        logger.debug(content)
+        if self.verbosity >= utils.Verbosity.Once:
+            logger.debug(f'Caption:', content)
 
-        title = caption = location = ''
-        for l in content.split('\n'):
-            kw = 'title:' 
-            if not title and kw in l:
-                title = l.split(kw)[1].strip()
-                continue
-            kw = 'caption:' 
-            if not caption and kw in l:
-                caption = l.split(kw)[1].strip()
-                continue
-            kw = 'location:' 
-            if not location and kw in l:
-                location = l.split(kw)[1].strip()
-                continue
-        location = location or 'Unknown'
-        return title, caption, location
+        return content
 
 
 

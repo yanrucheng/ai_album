@@ -317,7 +317,7 @@ class MediaCenter:
         _ = self.thumbnail_cache_manager.load(image_path)
         thumb_path = self.thumbnail_cache_manager._get_cache_file_path_from_path(image_path)
         location = self.llm_gen.get_location(thumb_path, has_nude=has_mild_nude, metadata=metadata)
-        return location
+        return location or 'Unknown'
 
     def cluster(self, *args) -> Cluster:
         self.full_cluster(*args)
