@@ -1,10 +1,11 @@
-from typing import List, Dict, Callable, Any, Union
+from typing import List, Dict, Callable, Any, Union, Optional
 from sklearn.cluster import AgglomerativeClustering
 from utils import MyPath
 import os
 import numpy as np
 import utils
 import collections
+import functools
 
 import logging
 logger = logging.getLogger(__name__)
@@ -119,13 +120,8 @@ class BaseHierarchicalCluster:
         if distance_levels is None:
             distance_levels = [2, 0.5]  # Default thresholds
 
-        # Process the initial cluster with the common leaf processor.
-        initial_cluster = ClusterLeafProcessor.process(
-            cluster, obj_to_obj=lambda f: (f, self.emb_func(f))
-        )
-
         # Perform subclass-specific recursive clustering.
-        res_cluster = self.recursive_clustering(initial_cluster, distance_levels, level=0)
+        res_cluster = self.recursive_clustering(cluster, distance_levels, level=0)
 
         # Prune the extra nesting levels.
         if self.needs_prune:
@@ -187,57 +183,6 @@ class BaseHierarchicalCluster:
         return cluster_name
 
 
-class AgglomerativeHierarchicalCluster(BaseHierarchicalCluster):
-    """
-    Hierarchical clustering using agglomerative clustering.
-    """
-
-    def recursive_clustering(
-        self, current_clusters: Cluster, distance_levels: List[float], level: int
-    ) -> Cluster:
-        if level >= len(distance_levels):
-            # At final level, return file paths instead of embedding pairs.
-            return {
-                cluster_id: [fp for fp, _ in cluster_data]
-                for cluster_id, cluster_data in current_clusters.items()
-            }
-
-        new_c = {}
-        for cluster_id, children in current_clusters.items():
-            if isinstance(children, dict):
-                new_c[cluster_id] = self.recursive_clustering(children, distance_levels, level)
-                continue
-
-            if not isinstance(children, list):
-                continue
-
-            if len(children) > 1:
-                cluster_embeddings = [emb for _, emb in children]
-                clustering = AgglomerativeClustering(
-                    distance_threshold=distance_levels[level], n_clusters=None
-                )
-                clustering.fit(cluster_embeddings)
-
-                sub_clusters = {}
-                for idx, label in enumerate(clustering.labels_):
-                    sub_clusters.setdefault(label, []).append(children[idx])
-
-                named_clusters = {}
-                for cluster in sub_clusters.values():
-                    cluster_name = self.get_name_for_cluster_node([x for x, _ in cluster])
-                    unique_cluster_name = utils.get_unique_key(cluster_name, named_clusters)
-                    named_clusters[unique_cluster_name] = cluster
-
-                new_c[cluster_id] = self.recursive_clustering(
-                    named_clusters, distance_levels, level + 1
-                )
-            elif len(children) == 1:
-                fp, _ = children[0]
-                new_c[cluster_id] = [fp]
-
-        return new_c
-
-
 class LinearHierarchicalCluster(BaseHierarchicalCluster):
     """
     Linear hierarchical clustering assumes a sorted, linear ordering where
@@ -264,106 +209,112 @@ class LinearHierarchicalCluster(BaseHierarchicalCluster):
         self.allow_empty = allow_empty
 
     def recursive_clustering(
-        self, current_clusters: Cluster, distance_levels: List[float], level: int
-    ) -> Cluster:
-
+        self, cluster: Union[Dict[Any, Any], List[Any]], distance_levels: List[float], level: int
+    ) -> Union[Dict[Any, Any], List[Any]]:
+        # Base case: no further distance levels to apply.
         if level >= len(distance_levels):
-            return {
-                cluster_id: [fp for fp, _ in cluster_data]
-                for cluster_id, cluster_data in current_clusters.items()
-            }
+            return self._copy_cluster(cluster)
 
-        new_c = {}
-        for cluster_id, children in current_clusters.items():
-            if isinstance(children, dict):
-                new_c[cluster_id] = self.recursive_clustering(children, distance_levels, level)
-                continue
+        # If the current cluster is a dict, process each key recursively.
+        if isinstance(cluster, dict):
+            return {key: self.recursive_clustering(value, distance_levels, level)
+                    for key, value in cluster.items()}
 
-            if not isinstance(children, list):
-                continue
+        # If the cluster is a list, sort and split it based on the current distance threshold.
+        elif isinstance(cluster, list):
+            sorted_items = sorted(cluster, key=self.sort_key_func)
+            if len(sorted_items) > 1:
+                clusters = self._split_clusters(sorted_items, distance_levels[level])
+                sub_clusters = self._assemble_subclusters(clusters)
+                # Recurse on the new subclusters at the next level.
+                return self.recursive_clustering(sub_clusters, distance_levels, level + 1)
+            else:
+                # Single element clusters are returned as a copy.
+                return sorted_items[:]
 
-            # Sort children based on the provided sort key.
-            children_sorted = sorted(children, key=lambda x: self.sort_key_func(x[0]))
+    def _copy_cluster(self, cluster: Union[Dict[Any, Any], List[Any]]) -> Union[Dict[Any, Any], List[Any]]:
+        """Performs a shallow copy of the cluster depending on its type."""
+        if isinstance(cluster, dict):
+            return {k: self._copy_cluster(v) for k, v in cluster.items()}
+        elif isinstance(cluster, list):
+            return cluster[:]
+        return cluster
 
-            if len(children_sorted) > 1:
-                clusters = []
-                current_cluster = [children_sorted[0]]
-                _, last_emb = children_sorted[0]
-                for i in range(1, len(children_sorted)):
-                    prev_fp, _ = children_sorted[i - 1]
-                    curr_fp, curr_emb = children_sorted[i]
-                    sim = self.sim_func(last_emb, curr_emb)
+    def _split_clusters(self, sorted_items: List[Any], distance_threshold: float) -> List[List[Any]]:
+        """
+        Splits a sorted list of items into clusters using the given distance threshold.
+        """
+        clusters = []
+        current_cluster = [sorted_items[0]]
+        last_embedding = self.emb_func(sorted_items[0])
 
-                    d = 1 - sim
+        for i, current_item in enumerate(sorted_items[1:], 1):
+            current_embedding = self.emb_func(current_item)
 
+            # Allow empty embeddings if enabled.
+            if current_embedding is None and self.allow_empty:
+                current_cluster.append(current_item)
+            else:
+                similarity = self.sim_func(last_embedding, current_embedding)
+                distance = 1 - similarity
+
+                if distance >= distance_threshold:
                     if self.debug_distance:
-                        logger.debug(f'{curr_fp[-30:]} is {d:.2f} to {prev_fp[-30:]}')
+                        # Example debug logging.
+                        shorter_path = lambda x: f'{x[:15]}...{x[-15:]}' if len(x) > 33 else x
+                        logger.debug(f'{shorter_path(current_item)} is {distance:.2f} to {shorter_path(sorted_items[i-1])}.')
+                    clusters.append(current_cluster)
+                    current_cluster = [current_item]
+                else:
+                    current_cluster.append(current_item)
 
-                    if curr_emb is None and self.allow_empty:
-                        current_cluster.append(children_sorted[i])
-                        continue
-                    elif d >= distance_levels[level]:
-                        # too much distance, break into new cluster
-                        if self.debug_distance:
-                            logger.debug('Too far away. Break into new clusters')
-                        clusters.append(current_cluster)
-                    else:
-                        current_cluster.append(children_sorted[i])
+            last_embedding = current_embedding
 
-                    last_emb = curr_emb
+        clusters.append(current_cluster)
+        return clusters
 
-                clusters.append(current_cluster)
+    def _assemble_subclusters(self, clusters: List[List[Any]]) -> Dict[str, List[Any]]:
+        """
+        Assigns unique keys to clusters and optionally merges adjacent clusters with the same name.
+        """
+        sub_cluster_keys = []
+        sub_cluster_values = []
+        last_name = None
 
-                sub_cluster_keys = []
-                sub_cluster_values = []
-                last_key = None
-                for cluster in clusters:
-                    cluster_name = self.get_name_for_cluster_node([x for x, _ in cluster])
+        for cluster in clusters:
+            cluster_name = self.get_name_for_cluster_node(cluster)
+            if self.merge_adjacent_same_key and (cluster_name == last_name) and sub_cluster_values:
+                sub_cluster_values[-1].extend(cluster)
+            else:
+                sub_cluster_keys.append(cluster_name)
+                sub_cluster_values.append(cluster[:])
+            last_name = cluster_name
 
-                    adjacent_is_same = (cluster_name == last_key)
-                    last_key = cluster_name
+        sub_clusters = {}
+        for index, (name, cluster) in enumerate(zip(sub_cluster_keys, sub_cluster_values), start=1):
+            if self.needs_index:
+                name = f'{index}-{name}'
+            unique_name = utils.get_unique_key(name, sub_clusters)
+            sub_clusters[unique_name] = cluster
 
-                    if self.merge_adjacent_same_key and adjacent_is_same:
-                        last_cluster = sub_cluster_values[-1]
-                        last_cluster_new = last_cluster + cluster
-                        sub_cluster_values[-1] = last_cluster_new
-                        continue
+        return sub_clusters
 
-                    sub_cluster_keys += cluster_name,
-                    sub_cluster_values += cluster,
-
-                sub_clusters = {}
-                for idx, (cluster_name, cluster) in enumerate(zip(sub_cluster_keys, sub_cluster_values), 1):
-                    if self.needs_index:
-                        cluster_name = f'{idx}-{cluster_name}'
-                    unique_cluster_name = utils.get_unique_key(cluster_name, sub_clusters)
-                    sub_clusters[unique_cluster_name] = cluster
-
-                new_c[cluster_id] = self.recursive_clustering(
-                    sub_clusters, distance_levels, level + 1
-                )
-            elif len(children) == 1:
-                fp, _ = children[0]
-                new_c[cluster_id] = [fp]
-
-        return new_c
-
-    def get_name_for_cluster_node(self, items: List[str]) -> str:
-
-        def is_empty(s):
-            s = s.lower()
-            if s in ('', None):
-                return True
-            if any(x in s for x in ('unknown', '未知')):
-                return True
-            return False
-
-        names = [self.obj_to_name(e) for e in items]
-        names = [n for n in names if not is_empty(n)]
+    def get_name_for_cluster_node(self, items: List[Any]) -> str:
+        """
+        Generates a cluster name based on the most common name found among its items.
+        """
+        names = [self.obj_to_name(e) for e in items if not self.is_empty(self.obj_to_name(e))]
         if not names:
             return 'Unknown'
-        most_common_name = collections.Counter(names).most_common(1)[0][0]
-        return most_common_name
+        most_common = collections.Counter(names).most_common(1)[0][0]
+        return most_common
 
-
-
+    @staticmethod
+    @functools.lru_cache(maxsize=8192)
+    def is_empty(s: Optional[str]) -> bool:
+        s = (s or '').lower()
+        if s == '' or s is None:
+            return True
+        if any(term in s for term in ('unknown', '未知')):
+            return True
+        return False

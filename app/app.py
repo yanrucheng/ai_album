@@ -24,6 +24,8 @@ def app(in_folder, args):
     thumb_cluster = s.thumbnail_cluster(*args.distance_levels)
     cluster = s.full_cluster(*args.distance_levels)
 
+    logger.debug('Cluster generation finished.')
+
     output_path = args.output_path
     if output_path == '':
         output_path = to_default_output_path(in_folder)

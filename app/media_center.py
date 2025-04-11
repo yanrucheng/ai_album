@@ -22,7 +22,7 @@ from my_cluster import ClusterKeyProcessor, ClusterLeafProcessor
 from my_cluster import Cluster
 import my_metadata
 
-from functools import lru_cache
+import functools
 
 import utils
 import re
@@ -120,7 +120,7 @@ class MediaCenter:
                 similarity_func = lambda x,y: 1 if x == y else -np.inf,
                 sort_key_func = lambda x: MyPath(x).date,
                 obj_to_name = lambda x: MyPath(x).date,
-                needs_prune = True,
+                allow_empty = True,
                 )
         self.geo_cluster = LinearHierarchicalCluster(
                 embedding_func = self._get_gps,
@@ -130,12 +130,14 @@ class MediaCenter:
                 needs_index = True,
                 merge_adjacent_same_key = True,
                 debug_distance = True,
+                allow_empty = True,
                 )
         self.image_cluster = LinearHierarchicalCluster(
-                embedding_func = self.embedding_cache_manager.load,
-                similarity_func = self.similarity_model.similarity_func,
+                embedding_func = lambda x:x,
+                similarity_func = self._emb_sim_func,
                 sort_key_func = lambda x: MyPath(x).timestamp,
                 obj_to_name = self.path_to_folder_name,
+                needs_index = True,
                 debug_distance = True,
                 )
         self._initialize()
@@ -223,6 +225,7 @@ class MediaCenter:
         d = utils.calculate_distance_meters(*latlon_pair_a, *latlon_pair_b)
         return -d
 
+    @functools.lru_cache(maxsize=8192)
     def _get_gps(self, image_path):
         meta = self._get_metadata(image_path)
         gps = meta.get('gps', {})
@@ -245,6 +248,16 @@ class MediaCenter:
         print("Initializing embeddings...")
         for fp in tqdm(self.media_fps, desc="Initializing embeddings", disable=not self.show_progress_bar):
             _ = self.embedding_cache_manager.load(fp)
+
+    @functools.lru_cache(maxsize=1024)
+    def _get_embedding(self, image_path):
+        return self.embedding_cache_manager.load(image_path)
+
+    @functools.lru_cache(maxsize=8192)
+    def _emb_sim_func(self, x, y):
+        emb_x = self._get_embedding(x)
+        emb_y = self._get_embedding(y)
+        return self.similarity_model.similarity_func(emb_x, emb_y)
 
     def compute_all_cache(self):
         print("Computing all caches...")
@@ -290,6 +303,7 @@ class MediaCenter:
         title = self.llm_gen.get_title(thumb_path, has_nude=has_mild_nude, metadata=metadata)
         return title
 
+    @functools.lru_cache(maxsize=8192)
     def _get_location(self, image_path):
         return self.location_cache_manager.load(image_path)
 
@@ -304,7 +318,7 @@ class MediaCenter:
     def cluster(self, *args) -> Cluster:
         self.full_cluster(*args)
 
-    @lru_cache(maxsize=64)
+    @functools.lru_cache(maxsize=64)
     def bundle_cluster(self, *distance_levels) -> Cluster:
         # use time to cluster
         raw = {0: self.media_fps}
@@ -312,16 +326,19 @@ class MediaCenter:
         # group by date
         logger.debug('Group by date started')
         c_date = self.date_cluster.cluster(raw, [1])
+        # pprint.pprint(c_date)
         logger.debug('Group by date finished')
 
         # group by location
         logger.debug('Group by location started')
-        c_geo = self.geo_cluster.cluster(c_date, [1500])
+        c_geo = self.geo_cluster.cluster(c_date, [3000])
+        # pprint.pprint(c_geo)
         logger.debug('Group by location finished')
 
         # distance_levels = [] means if 1 photos are taken
         logger.debug('Group by content started')
         c_named = self.image_cluster.cluster( c_geo, distance_levels,)
+        # pprint.pprint(c_named)
         logger.debug('Group by content finished')
 
         return c_named
@@ -345,6 +362,7 @@ class MediaCenter:
             get_thumbnail_path
         )
 
+    @functools.lru_cache(maxsize=8192)
     def path_to_folder_name(self, image_path):
 
         def remove_punctuation(name):
