@@ -310,13 +310,19 @@ class MediaCenter:
         raw = {0: self.media_fps}
 
         # group by date
+        logger.debug('Group by date started')
         c_date = self.date_cluster.cluster(raw, [1])
+        logger.debug('Group by date finished')
 
         # group by location
+        logger.debug('Group by location started')
         c_geo = self.geo_cluster.cluster(c_date, [1500])
+        logger.debug('Group by location finished')
 
         # distance_levels = [] means if 1 photos are taken
+        logger.debug('Group by content started')
         c_named = self.image_cluster.cluster( c_geo, distance_levels,)
+        logger.debug('Group by content finished')
 
         return c_named
 

@@ -5,7 +5,6 @@ import os
 import numpy as np
 import utils
 import collections
-import pprint
 
 import logging
 logger = logging.getLogger(__name__)
@@ -268,10 +267,6 @@ class LinearHierarchicalCluster(BaseHierarchicalCluster):
         self, current_clusters: Cluster, distance_levels: List[float], level: int
     ) -> Cluster:
 
-        if self.debug_distance:
-            print('start', level)
-            pprint.pprint(current_clusters)
-
         if level >= len(distance_levels):
             return {
                 cluster_id: [fp for fp, _ in cluster_data]
@@ -329,7 +324,9 @@ class LinearHierarchicalCluster(BaseHierarchicalCluster):
                     last_key = cluster_name
 
                     if self.merge_adjacent_same_key and adjacent_is_same:
-                        sub_cluster_values[-1] += cluster
+                        last_cluster = sub_cluster_values[-1]
+                        last_cluster_new = last_cluster + cluster
+                        sub_cluster_values[-1] = last_cluster_new
                         continue
 
                     sub_cluster_keys += cluster_name,
@@ -341,10 +338,6 @@ class LinearHierarchicalCluster(BaseHierarchicalCluster):
                         cluster_name = f'{idx}-{cluster_name}'
                     unique_cluster_name = utils.get_unique_key(cluster_name, sub_clusters)
                     sub_clusters[unique_cluster_name] = cluster
-
-                if self.debug_distance:
-                    print('End', level)
-                    pprint.pprint(sub_clusters)
 
                 new_c[cluster_id] = self.recursive_clustering(
                     sub_clusters, distance_levels, level + 1
