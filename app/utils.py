@@ -3,8 +3,8 @@ import platform
 import shutil
 import functools
 from functools import lru_cache
-from datetime import datetime
 import time
+from datetime import datetime, timedelta
 from collections import Counter
 import hashlib
 from pathlib import Path
@@ -16,12 +16,13 @@ import contextlib
 import json
 import re
 import pytz
-
-import logging
-logger = logging.getLogger(__name__)
+import cv2
 
 import pprint
 from typing import Any
+
+import logging
+logger = logging.getLogger(__name__)
 
 # Print related
 # WIP. currently not working
@@ -273,6 +274,23 @@ def get_file_timestamp(path):
     except (OSError, AttributeError):
         timestamp = time.time()
     return timestamp
+
+@functools.lru_cache(maxsize=None)
+def get_video_duration(file_name):
+    """Extract video duration in seconds using OpenCV"""
+    try:
+        video = cv2.VideoCapture(file_name)
+        fps = video.get(cv2.CAP_PROP_FPS)
+        frame_count = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        if fps > 0 and frame_count > 0:
+            duration = frame_count / fps
+            return duration
+        return 0
+    except Exception:
+        return 0
+    finally:
+        video.release()
 
 # OS related
 
@@ -538,13 +556,6 @@ def are_strings_similar(str1, str2):
     
     return False
 
-# Test cases
-print(are_strings_similar("摩天", "摩天轮"))  # True (substring)
-print(are_strings_similar("成田机场", "成天区"))  # True (significant overlap)
-print(are_strings_similar("北京", "上海"))  # False (no similarity)
-print(are_strings_similar("火车站", "火车南站"))  # True (substring)
-
-
 # Geography related
 def calculate_distance_meters(
     latitude_point_a: float,
@@ -593,3 +604,47 @@ def calculate_distance_meters(
     
     distance_meters = EARTH_RADIUS_METERS * angular_distance
     return distance_meters
+
+# collection related
+def get_fractional_element(lst, fraction=0.666, default=None):
+    """
+    Get an element from a list at a fractional position.
+    
+    Args:
+        lst: The input list
+        fraction: Position between 0 (start) and 1 (end) of the list
+        default: Value to return if list is empty or invalid fraction
+        
+    Returns:
+        The element at the fractional position or default value
+    """
+    if not isinstance(lst, (list, tuple)) or not lst:
+        return default
+        
+    if not isinstance(fraction, (int, float)) or fraction < 0 or fraction > 1:
+        return default
+    
+    try:
+        # Calculate exact position
+        exact_pos = fraction * (len(lst) - 1)
+        
+        # Get floor and ceiling indices
+        low = int(exact_pos)
+        high = low + 1
+        
+        # Handle edge case where fraction == 1.0
+        if high >= len(lst):
+            return lst[-1]
+        
+        # Calculate interpolation weight
+        weight = exact_pos - low
+        
+        # Return either the floor element or interpolate between floor and ceiling
+        if weight < 0.5:
+            return lst[low]
+        else:
+            return lst[high]
+        
+    except Exception as e:
+        print(f"Error getting fractional element: {e}")
+        return default

@@ -48,6 +48,9 @@ def parse_arguments():
                         default=MapDatum.WGS84,
                         help=f"Geodetic datum (default: {MapDatum.WGS84.value}). "
                             f"Options: {', '.join(d.value for d in MapDatum)}")
+    parser.add_argument('-mg', '--max-gap-for-bundle',
+                        type=int, default=15,
+                        help='Max number of seconds for adjacent media to be treated as one bundle (default: 15 seconds)')
 
     parser.add_argument('--debug', action='store_true',
                         help='Enable function tracking timer')

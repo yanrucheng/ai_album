@@ -5,6 +5,7 @@ from PIL import Image
 from cache_manager import CacheManager
 from my_llm import ImageSimilarityCalculator
 from media_utils import MediaOperator
+import functools
 
 INTERVAL = 3
 TOP_K_KEY_FRAME_SELECTION = 0.5

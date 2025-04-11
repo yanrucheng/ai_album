@@ -4,7 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import List, Dict
 
-from utils import MyPath
+import utils
 from media_utils import MediaValidator
 from function_tracker import global_tracker
 import time
@@ -37,11 +37,12 @@ class MediaOrganizer:
     and provides a method to retrieve all valid media files from a folder.
     """
 
-    def __init__(self):
+    def __init__(self, max_gap_for_bundle: int = 15):
         # Union–find structure to group files
         self.parent: Dict[str, str] = {}
         self.files: List[str] = []
         self.bundles: Dict[str, MediaBundle] = {}
+        self.max_gap_for_bundle = max_gap_for_bundle
 
     def organize_files(self, filepaths: List[str]) -> List[MediaBundle]:
         """
@@ -51,7 +52,7 @@ class MediaOrganizer:
         for fp in filepaths:
             self._add_file(fp)
         self._apply_filename_strategy()
-        self._apply_temporal_strategy(threshold_sec=15)
+        self._apply_temporal_strategy(threshold_sec=self.max_gap_for_bundle)
         self._update_bundles()
         return self.get_bundles()
 
@@ -88,8 +89,8 @@ class MediaOrganizer:
         """
         Group files whose timestamps are within threshold_sec seconds of each other.
         """
-        file_times = [(file, MyPath(file).timestamp) for file in self.files if MediaValidator.validate(file)]
-        sorted_files = sorted(file_times, key=lambda x: (MyPath(x[0]).extension, x[1]))
+        file_times = [(file, utils.MyPath(file).timestamp) for file in self.files if MediaValidator.validate(file)]
+        sorted_files = sorted(file_times, key=lambda x: (utils.MyPath(x[0]).extension, x[1]))
         for i in range(1, len(sorted_files)):
             curr_file, curr_time = sorted_files[i]
             prev_file, prev_time = sorted_files[i - 1]
@@ -133,7 +134,7 @@ class MediaOrganizer:
         Return a sorted list of media bundles.
         """
         return sorted(self.bundles.values(),
-                      key=lambda bundle: MyPath(bundle.representative_path).timestamp)
+                      key=lambda bundle: utils.MyPath(bundle.representative_path).timestamp)
 
     def get_bundle(self, bundle_path):
         return self.bundles[bundle_path]
@@ -181,7 +182,7 @@ class MediaOrganizer:
             if file_count > only_show:
                 first_half = only_show // 2
                 for f in bundle.files[:first_half]:
-                    path = MyPath(f)
+                    path = utils.MyPath(f)
                     logger.debug(f"    - {f}, {path.timestr}")
                 
                 # Omitted count
@@ -190,11 +191,11 @@ class MediaOrganizer:
                 
                 last_half = only_show - first_half
                 for f in bundle.files[-last_half:]:
-                    path = MyPath(f)
+                    path = utils.MyPath(f)
                     logger.debug(f"    - {f}, {path.timestr}")
             else:
                 for f in bundle.files:
-                    path = MyPath(f)
+                    path = utils.MyPath(f)
                     logger.debug(f"    - {f}, {path.timestr}")
 
         # Calculate statistics
@@ -205,6 +206,41 @@ class MediaOrganizer:
         logger.info(f"Total bundles processed: {total_bundles}")
         logger.info(f"Total files across all bundles: {total_files}")
         logger.info(f"Average selection rate: {average_selection_rate:.2%}")
+
+def get_file_timestamps(path):
+    """
+    Return start and end timestamps of a file
+    For images: start = end
+    For videos: end = start + duration
+    For other files: start = end
+    """
+    # Get the base timestamp (creation time or modification time)
+    base_timestamp = utils.MyPath(path).timestamp
+    
+    # Initialize start and end timestamps
+    start_timestamp = base_timestamp
+    end_timestamp = base_timestamp
+    
+    try:
+        if MediaValidator.is_image(path):
+            # For images, start = end
+            return (start_timestamp, end_timestamp)
+        
+        if MediaValidator.is_video(path):
+            # Get video duration and calculate end timestamp
+            duration = utils.get_video_duration(path)
+            if duration > 0:
+                end_timestamp = start_timestamp + duration
+            return (start_timestamp, end_timestamp)
+            
+    except Exception:
+        # If anything fails, return the base timestamps
+        pass
+    
+    # For all other files, return start = end
+    return (start_timestamp, end_timestamp)
+
+
 
 
 # Example usage

@@ -17,6 +17,7 @@ def app(in_folder, args):
                     show_progress_bar = not args.disable_progress,
                     cache_flags = args.cache_flags,
                     datum = args.map_datum,
+                    max_gap_for_bundle = args.max_gap_for_bundle,
                     )
     s.compute_all_cache()
 

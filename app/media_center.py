@@ -42,6 +42,7 @@ class MediaCenter:
                  check_rotation=True,
                  cache_flags=CacheStates(True,True,True,True,True,True,True,True),
                  datum=my_metadata.MapDatum.WGS84,
+                 max_gap_for_bundle=15,
                  **kwargs):
         print("Initializing ImageSimilarity...")
 
@@ -52,10 +53,11 @@ class MediaCenter:
         self.check_rotation = check_rotation
         self.cache_flags = cache_flags
         self.datum = datum
+        self.max_gap_for_bundle = max_gap_for_bundle
 
 
         self.folder_path = folder_path
-        self.mo = MediaOrganizer()
+        self.mo = MediaOrganizer(max_gap_for_bundle=max_gap_for_bundle)
         self.media_fps = self.mo.get_all_valid_files(folder_path)
         self.video_mng = VideoManager(folder_path, show_progress_bar)
 
@@ -115,22 +117,27 @@ class MediaCenter:
         # Initialize similarity cluster
         self.date_cluster = LinearHierarchicalCluster(
                 embedding_func = lambda x: MyPath(x).date,
-                similarity_func = lambda x,y: np.inf if x == y else 0,
+                similarity_func = lambda x,y: 1 if x == y else -np.inf,
                 sort_key_func = lambda x: MyPath(x).date,
-                obj_to_name = lambda x: MyPath(x).date)
+                obj_to_name = lambda x: MyPath(x).date,
+                needs_prune = True,
+                )
         self.geo_cluster = LinearHierarchicalCluster(
                 embedding_func = self._get_gps,
                 similarity_func = self._get_gps_similarity,
                 sort_key_func = lambda x: MyPath(x).timestamp,
-                obj_to_name = lambda x: '{idx}-' + self._get_location(x),
-                needs_prune = False,
+                obj_to_name = lambda x: self._get_location(x),
+                needs_index = True,
+                merge_adjacent_same_key = True,
                 debug_distance = True,
                 )
         self.image_cluster = LinearHierarchicalCluster(
                 embedding_func = self.embedding_cache_manager.load,
                 similarity_func = self.similarity_model.similarity_func,
                 sort_key_func = lambda x: MyPath(x).timestamp,
-                obj_to_name = self.path_to_folder_name)
+                obj_to_name = self.path_to_folder_name,
+                debug_distance = True,
+                )
         self._initialize()
 
     @property
@@ -209,7 +216,9 @@ class MediaCenter:
         return any(d['mild_sensitive'] for lb, d in nude_tag.items())
 
     def _get_gps_similarity(self, latlon_pair_a, latlon_pair_b):
-        if None in (*latlon_pair_a, *latlon_pair_b):
+        if None in latlon_pair_a:
+            return -np.inf
+        if None in latlon_pair_b:
             return np.inf
         d = utils.calculate_distance_meters(*latlon_pair_a, *latlon_pair_b)
         return -d
@@ -304,7 +313,7 @@ class MediaCenter:
         c_date = self.date_cluster.cluster(raw, [1])
 
         # group by location
-        c_geo = self.geo_cluster.cluster(c_date, [1000])
+        c_geo = self.geo_cluster.cluster(c_date, [1500])
 
         # distance_levels = [] means if 1 photos are taken
         c_named = self.image_cluster.cluster( c_geo, distance_levels,)
@@ -340,7 +349,7 @@ class MediaCenter:
 
         # folder_name = '-'.join(x.title() for x in caption.split())
         folder_name = self._get_title(image_path)
-        indexed_folder_name = '{idx}-' + folder_name
+        indexed_folder_name = folder_name
         cleaned_folder_name = remove_punctuation(indexed_folder_name)
         return cleaned_folder_name
 
