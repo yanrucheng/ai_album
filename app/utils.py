@@ -2,7 +2,7 @@ import os
 import platform
 import shutil
 import functools
-from functools import lru_cache
+import unicodedata
 import time
 from datetime import datetime, timedelta
 from collections import Counter
@@ -131,7 +131,7 @@ def get_mode(data):
 
 # Hash related
 
-@lru_cache(maxsize=8192)
+@functools.lru_cache(maxsize=8192)
 def stable_hash(obj) -> str:
     # Convert the object to a string in a consistent manner
     # Use repr for a standardized representation
@@ -148,7 +148,7 @@ def stable_hash(obj) -> str:
 
     return hash_hex
 
-@lru_cache(maxsize=8192)
+@functools.lru_cache(maxsize=8192)
 def md5(path):
     hash_md5 = hashlib.md5()
     with open(path, "rb") as f:
@@ -157,7 +157,7 @@ def md5(path):
     return hash_md5.hexdigest()
 
 
-@lru_cache(maxsize=8192)
+@functools.lru_cache(maxsize=8192)
 def partial_file_hash(path, chunk_size=4096):
     hash_md5 = hashlib.md5()
     file_size = os.path.getsize(path)
@@ -179,6 +179,63 @@ def partial_file_hash(path, chunk_size=4096):
 
 
 # Path related
+
+def is_bad_folder_name(name):
+    """
+    Check if folder name is invalid according to multiple criteria:
+    - Empty/None/whitespace-only
+    - Contains forbidden ASCII characters: {}<>:"/\|?*
+    - Contains Chinese punctuation: ，。？、
+    - Windows reserved names (CON, PRN, AUX, etc.)
+    - Starts/ends with whitespace or dot
+    - Contains control characters
+    - Too long (> 255 chars)
+    - Contains emoji or other unusual Unicode
+    """
+    if not name or not isinstance(name, str):  # None, empty, or not string
+        return True
+    
+    name = name.strip()
+    if not name:  # Whitespace-only
+        return True
+    
+    # Forbidden ASCII characters
+    forbidden_ascii = {'{', '}', '<', '>', ':', '"', '/', '\\', '|', '?', '*', '_'}
+    
+    # Chinese/Japanese punctuation
+    forbidden_cjk = {'，', '。', '？', '、', '「', '」', '『', '』', '【', '】'}
+    
+    # Windows reserved names (case insensitive)
+    windows_reserved = {
+        'CON', 'PRN', 'AUX', 'NUL',
+        'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
+        'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'
+    }
+    
+    # Check various conditions
+    return any([
+        # Structural problems
+        len(name) > 255,
+        name.startswith(('.', ' ')),
+        name.endswith(('.', ' ')),
+        any(ord(char) < 32 for char in name),  # Control characters
+        
+        # Forbidden character sets
+        any(char in forbidden_ascii for char in name),
+        any(char in forbidden_cjk for char in name),
+        
+        # Reserved names
+        name.upper() in windows_reserved,
+        name.upper().startswith('~$'),  # Temporary files
+        
+        # Unusual Unicode categories
+        any(
+            unicodedata.category(char) in ('So', 'Cn', 'Co')  # Symbols/Other, control, private use
+            for char in name
+        )
+    ])
+
+# Note: Requires 'import unicodedata' at top of file
 
 # a decorator
 def ensure_unique_path(func):
@@ -265,7 +322,7 @@ class MyPath:
         else:  # from midnight to 5 am
             return 'Midnight'
 
-@lru_cache(maxsize=None)
+@functools.lru_cache(maxsize=None)
 def get_file_timestamp(path):
     timestamp = None
     try:

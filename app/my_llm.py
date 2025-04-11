@@ -4,14 +4,20 @@ import json
 from PIL import Image
 from lavis.models import load_model_and_preprocess
 import llm_api
+import my_deco
 from typing import List, Dict
 
 import torch
 from nudenet import NudeDetector
 import my_metadata
+import collections
 
 import logging
 logger = logging.getLogger(__name__)
+
+class BadLLMResultException(Exception):
+    """Custom exception for Bad result from LLM"""
+    pass
 
 class ImageLLMGen:
 
@@ -140,10 +146,7 @@ class Prompt:
 {location}
 
 Meta信息：
-{meta_info}
-
-此前出现的文件夹名：
-{previous_folder_names}'''
+{meta_info}'''
 
     location_system_prompt = '''你的任务是根据图片描述和附近POI列表，严格提取最相关的地点名称
 规则：  
@@ -181,6 +184,7 @@ class CaptionLocator:
         self.client = llm_api.LLMClient()
         self.verbosity = verbosity
 
+    @my_deco.custom_retry(max_retries=5, retry_exceptions=BadLLMResultException, delay=1)
     def get_location(self, caption: str, metadata: Dict):
         geo_candidates = my_metadata.PhotoInfoExtractor(metadata).get_geo_info()
         if geo_candidates == '':
@@ -212,14 +216,19 @@ class CaptionLocator:
         location = content['site_name']
         if self.verbosity >= utils.Verbosity.Once:
             logger.debug(f'Site: {location}')
+        if utils.is_bad_folder_name(location):
+            if self.verbosity >= utils.Verbosity.Once:
+                logger.debug('Bad result. try again')
+            raise BadLLMResultException
         return location
 
 class CaptionTitler:
     def __init__(self, verbosity: utils.Verbosity = utils.Verbosity.Once, max_history: int = 10):
         self.client = llm_api.LLMClient()
         self.verbosity = verbosity
-        self.title_deque = collections.deque(maxlen=max_history)  # Now properly initialized with max length
+        self.title_deque = collections.deque(maxlen=max_history)
     
+    @my_deco.custom_retry(max_retries=5, retry_exceptions=BadLLMResultException, delay=1)
     def get_title(self, caption: str, metadata: Dict, location: str):
         metadata_str = my_metadata.PhotoInfoExtractor(metadata).get_info()
 
@@ -237,14 +246,10 @@ class CaptionTitler:
         meta_info = '\n'.join(filter(None, meta_info_parts))
         system_prompt = Prompt.title_system_prompt
         
-        # Include previous titles in the prompt if available
-        previous_titles = '\n'.join(f"- {title}" for title in self.title_deque)
-        
         user_prompt = Prompt.title_user_prompt.format(
             caption=caption,
             location=location,
             meta_info=meta_info,
-            previous_folder_names=previous_titles if previous_titles else '无历史文件夹名',
         )
 
         if self.verbosity >= utils.Verbosity.Once:
@@ -276,9 +281,11 @@ class CaptionTitler:
         
         if self.verbosity >= utils.Verbosity.Once:
             logger.debug(f'title: {title}')
-            if self.title_deque:
-                logger.debug(f'Title history (last {len(self.title_deque)}): {list(self.title_deque)}')
                 
+        if utils.is_bad_folder_name(title):
+            if self.verbosity >= utils.Verbosity.Once:
+                logger.debug('Bad result. try again')
+            raise BadLLMResultException
         return title
 
     def get_title_history(self) -> List[str]:

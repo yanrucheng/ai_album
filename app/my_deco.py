@@ -4,7 +4,7 @@ from typing import Callable, Any, Optional, Dict, Union
 import requests
 import json
 
-def retry_api(max_retries: int = 3, delay: float = 1.0):
+def retry_api(max_retries: int = 10, delay: float = 1.0):
     """
     Decorator for retrying API calls that fail with specific error codes.
     
@@ -113,5 +113,31 @@ def retry_geo_api(max_retries: int = 3, delay: float = 1.0):
             return {"status": "0",
                     "error": f"Max retries ({max_retries}) exceeded. Last error: {str(last_exception)}",
                     "infocode": "429"}
+        return wrapper
+    return decorator
+
+def custom_retry(max_retries, retry_exceptions, delay=0):
+    """
+    Decorator that retries a function when specific exceptions occur.
+
+    Args:
+        max_retries (int): Maximum number of retry attempts
+        retry_exceptions (Exception or tuple): Exception(s) that trigger a retry
+        delay (float): Delay between retries in seconds (default: 0)
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            retries = 0
+            while retries < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except retry_exceptions as e:
+                    retries += 1
+                    if retries >= max_retries:
+                        raise  # Re-raise the last exception if max retries reached
+                    if delay > 0:
+                        time.sleep(delay)
+                    print(f"Retry {retries}/{max_retries} after exception: {e}")
         return wrapper
     return decorator
